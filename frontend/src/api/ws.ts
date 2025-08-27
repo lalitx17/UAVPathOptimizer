@@ -30,7 +30,7 @@ export function connectWs() {
       useSimStore.getState().setWorldSize(msg.world.size);
     } else if (msg.type === "state") {
       useSimStore.getState().setStateFrame(msg.tick, msg.drones);
-      console.log("frame", msg.tick, "drones:", msg.drones?.length ?? 0);
+      console.log(msg);
     } else if (msg.type === "error") {
       console.error("Server error:", msg.message);
     }

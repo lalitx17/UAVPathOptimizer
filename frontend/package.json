@@ -12,6 +12,7 @@
   "dependencies": {
     "@deck.gl/core": "^9.1.14",
     "@deck.gl/layers": "^9.1.14",
+    "@deck.gl/mesh-layers": "^9.1.14",
     "@deck.gl/react": "^9.1.14",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
