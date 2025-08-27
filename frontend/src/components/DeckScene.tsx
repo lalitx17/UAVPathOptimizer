@@ -1,5 +1,5 @@
 import { COORDINATE_SYSTEM, OrbitView } from "@deck.gl/core";
-import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { PathLayer } from "@deck.gl/layers";
 import { ScenegraphLayer } from "@deck.gl/mesh-layers";
 import DeckGL from "@deck.gl/react";
 import { useMemo } from "react";
@@ -31,16 +31,6 @@ export default function DeckScene() {
       loadOptions: { gltf: { decompressMeshes: true } },
     });
 
-    const scatter = new ScatterplotLayer<Drone>({
-      id: "drone-dots",
-      data: drones,
-      getPosition: (d) => [d.pos.x, d.pos.y, d.pos.z ?? 0],
-      getRadius: 6,
-      radiusUnits: "pixels",
-      getFillColor: [20, 160, 255],
-      pickable: true,
-      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-    });
 
     const paths = new PathLayer<Drone>({
       id: "paths",
@@ -56,7 +46,7 @@ export default function DeckScene() {
       coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
     });
 
-    return [paths, drone3D, scatter];
+    return [paths, drone3D];
   }, [drones]);
 
   const initialViewState = useMemo(
