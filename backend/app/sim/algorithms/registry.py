@@ -1,13 +1,12 @@
 from typing import Dict, Type
 
+from .a_star_grid import AStarGrid
 from .base import Algorithm
 from .straight_line import StraightLine
 
 _REGISTRY: Dict[str, Type[Algorithm]] = {
     StraightLine.name: StraightLine,
-    # "a_star": AStar,
-    # "rrt": RRT,
-    # "ga": GeneticAlgo,
+    AStarGrid.name: AStarGrid,
 }
 
 def available_algorithms() -> list[str]:

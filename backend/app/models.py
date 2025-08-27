@@ -1,12 +1,21 @@
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class Vec3(BaseModel):
     x: float
     y: float
     z: float = 0.0
+
+class Building(BaseModel):
+    id: str
+    center: Vec3              
+    size: Vec3                 
+
+class World(BaseModel):
+    size: Tuple[float, float, float] = (1000.0, 1000.0, 150.0)
+    obstacles: List[Building] = []
 
 class Drone(BaseModel):
     id: str
@@ -15,18 +24,17 @@ class Drone(BaseModel):
     path: List[Vec3] = []
     target: Optional[Vec3] = None
 
-class World(BaseModel):
-    size: Tuple[float, float, float] = (1000.0, 1000.0, 100.0)
-    obstacles: List[Dict[str, Any]] = []
-
 class ClientMsg(BaseModel):
-    type: Literal["init","start","pause","reset","set_algorithm","set_params","set_drones","tick_rate"]
+    type: Literal[
+        "init","start","pause","reset",
+        "set_algorithm","set_params","set_drones","tick_rate",
+        "set_world"
+    ]
     algorithm: Optional[str] = None
     params: Optional[Dict[str, Any]] = None
     drones: Optional[List[Drone]] = None
     world: Optional[World] = None
     tick_rate_hz: Optional[int] = None
-
 
 class StateMsg(BaseModel):
     type: Literal["state"] = "state"
@@ -38,6 +46,7 @@ class MetaMsg(BaseModel):
     type: Literal["meta"] = "meta"
     algorithms: List[str]
     world: World
+    worlds: List[str] = []     
 
 class ErrorMsg(BaseModel):
     type: Literal["error"] = "error"

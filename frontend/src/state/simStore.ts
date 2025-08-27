@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Drone } from "../types";
+import type { Drone, World } from "../types";
 
 type SimState = {
   connected: boolean;
@@ -7,12 +7,14 @@ type SimState = {
   drones: Drone[];
   algorithms: string[];
   selectedAlgorithm: string | null;
-  worldSize: [number,number,number];
+  world: World;
+  worldPresets: string[];
   setConnected(v:boolean): void;
   setStateFrame(tick:number, drones:Drone[]): void;
   setAlgorithms(list:string[]): void;
   setSelectedAlgorithm(name:string): void;
-  setWorldSize(sz:[number,number,number]): void;
+  setWorld(w:World): void;
+  setWorldPresets(list:string[]): void;
 };
 
 export const useSimStore = create<SimState>((set) => ({
@@ -21,10 +23,12 @@ export const useSimStore = create<SimState>((set) => ({
   drones: [],
   algorithms: [],
   selectedAlgorithm: null,
-  worldSize: [1000,1000,100],
-  setConnected: (v) => set({ connected:v }),
-  setStateFrame: (tick, drones) => set({ tick, drones }),
-  setAlgorithms: (list) => set({ algorithms: list, selectedAlgorithm: list[0] ?? null }),
-  setSelectedAlgorithm: (name) => set({ selectedAlgorithm: name }),
-  setWorldSize: (sz) => set({ worldSize: sz })
+  world: { size:[1000,1000,100], obstacles:[] },
+  worldPresets: [],
+  setConnected: (v)=> set({ connected:v }),
+  setStateFrame: (tick,drones)=> set({ tick, drones }),
+  setAlgorithms: (list)=> set({ algorithms:list, selectedAlgorithm:list[0] ?? null }),
+  setSelectedAlgorithm: (name)=> set({ selectedAlgorithm:name }),
+  setWorld: (w)=> set({ world:w }),
+  setWorldPresets: (list)=> set({ worldPresets:list }),
 }));

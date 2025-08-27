@@ -27,15 +27,14 @@ class SimulationEngine:
         self.drones = drones
 
     async def run(self, send_state):
-        """Call send_state(StateMsg) at each tick until cancelled."""
         try:
             while True:
                 dt = 1.0 / max(1, self.tick_rate_hz)
-                # plan paths (could be on a slower cadence if heavy)
+                # expose tick to algorithms via params
+                self.params["tick"] = self.tick
                 ctx = AlgoContext(world=self.world, drones=self.drones, params=self.params)
                 self.algorithm.plan_paths(ctx)
 
-                # step physics
                 speed = float(self.params.get("speed", 30.0))
                 step_drones(self.drones, dt, speed=speed)
 
