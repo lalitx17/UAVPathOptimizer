@@ -1,47 +1,72 @@
+import * as Label from "@radix-ui/react-label";
+import * as Select from "@radix-ui/react-select";
+import * as Separator from "@radix-ui/react-separator";
+import * as Slider from "@radix-ui/react-slider";
+import { Brain, Check, ChevronDown, Globe, Zap, PanelRightOpen, PanelLeftClose } from "lucide-react";
 import { useEffect, useState } from "react";
 import { send } from "../api/ws";
 import { useSimStore } from "../state/simStore";
 
 const API = import.meta.env.VITE_HTTP_API ?? "http://localhost:8000";
 
-type BBox = { north:number; south:number; east:number; west:number };
+type BBox = { north: number; south: number; east: number; west: number };
 
 const PRESETS: Record<string, BBox> = {
-  "NYC – Times Sq (tiny)": { north: 40.75890, south: 40.75790, east: -73.98400, west: -73.98620 },
-  "Boston – Kendall (small)": { north: 42.36730, south: 42.36470, east: -71.08750, west: -71.09150 },
-  "SF – FiDi (small)": { north: 37.79260, south: 37.79000, east: -122.39850, west: -122.40200 },
+  "NYC – Times Sq (tiny)": { north: 40.7589, south: 40.7579, east: -73.984, west: -73.9862 },
+  "Boston – Kendall (small)": { north: 42.3673, south: 42.3647, east: -71.0875, west: -71.0915 },
+  "SF – FiDi (small)": { north: 37.7926, south: 37.79, east: -122.3985, west: -122.402 },
 };
 
+type WorldMode = "synthetic" | "osm";
+
 export default function Controls() {
-  const algorithms = useSimStore(s=>s.algorithms);
-  const selected   = useSimStore(s=>s.selectedAlgorithm);
-  const setSelected= useSimStore(s=>s.setSelectedAlgorithm);
-  const tick       = useSimStore(s=>s.tick);
+  const algorithms = useSimStore((s) => s.algorithms);
+  const selected = useSimStore((s) => s.selectedAlgorithm);
+  const setSelected = useSimStore((s) => s.setSelectedAlgorithm);
+  const tick = useSimStore((s) => s.tick);
+  const world = useSimStore((s) => s.world);
+  const drones = useSimStore((s) => s.drones);
 
-  const [speed, setSpeed] = useState(30);
-  const [tickRate, setTickRate] = useState(20);
+  // ------- Sidebar open/close -------
+  const [open, setOpen] = useState(true);
+  const toggle = () => setOpen((o) => !o);
 
-  // A* params
-  const [cell, setCell] = useState(10);
-  const [clearance, setClearance] = useState(5);
-  const [cruise, setCruise] = useState(60);
+  const [phase, setPhase] = useState<"world" | "post">("world");
+  const [activeTab, setActiveTab] = useState<"world" | "algorithms" | "simulation">("world");
 
-  // City loader state
+  // ------- World UI state -------
+  const [mode, setMode] = useState<WorldMode | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // OSM bbox inputs
   const [north, setNorth] = useState(PRESETS["NYC – Times Sq (tiny)"].north);
   const [south, setSouth] = useState(PRESETS["NYC – Times Sq (tiny)"].south);
   const [east, setEast] = useState(PRESETS["NYC – Times Sq (tiny)"].east);
   const [west, setWest] = useState(PRESETS["NYC – Times Sq (tiny)"].west);
-  const [maxB, setMaxB] = useState(200);
+  const [maxB, setMaxB] = useState(250);
 
-  useEffect(()=> { if (selected) send({type:"set_algorithm", algorithm:selected}); }, [selected]);
-  useEffect(()=> { send({type:"set_params", params:{ speed: speed }}); }, [speed]);
-  useEffect(()=> { send({type:"tick_rate", tick_rate_hz: tickRate}); }, [tickRate]);
+  // Synthetic params
+  const [cityWidth, setCityWidth] = useState(3000);
+  const [cityHeight, setCityHeight] = useState(3000);
+  const [seed, setSeed] = useState(42);
 
-  useEffect(()=> {
-    // continuous sync of planner params (algorithms decide what to use)
-    send({ type:"set_params", params:{
-      grid_cell_m: cell, clearance_m: clearance, cruise_alt_m: cruise, allow_diagonal: true
-    }});
+  // ------- Simulation params -------
+  const [speed, setSpeed] = useState(30);
+  const [tickRate, setTickRate] = useState(20);
+  const [cell, setCell] = useState(10);
+  const [clearance, setClearance] = useState(5);
+  const [cruise, setCruise] = useState(60);
+  const [droneCount, setDroneCount] = useState(200);
+
+  // Backend param sync
+  useEffect(() => { if (selected) send({ type: "set_algorithm", algorithm: selected }); }, [selected]);
+  useEffect(() => { send({ type: "set_params", params: { speed } }); }, [speed]);
+  useEffect(() => { send({ type: "tick_rate", tick_rate_hz: tickRate }); }, [tickRate]);
+  useEffect(() => {
+    send({
+      type: "set_params",
+      params: { grid_cell_m: cell, clearance_m: clearance, cruise_alt_m: cruise, allow_diagonal: true },
+    });
   }, [cell, clearance, cruise]);
 
   const applyPreset = (name: keyof typeof PRESETS) => {
@@ -49,115 +74,440 @@ export default function Controls() {
     setNorth(b.north); setSouth(b.south); setEast(b.east); setWest(b.west);
   };
 
-  const loadCity = async () => {
-    const body = { mode: "synthetic", "city_w": 3000, "city_h": 3000, "seed":42  };
-    const r = await fetch(`${API}/world_from_osm`, {
-      method: "POST",
-      headers: { "Content-Type":"application/json" },
-      body: JSON.stringify(body)
-    });
-    if (!r.ok) {
-      const text = await r.text().catch(()=> "");
-      console.error("OSM load failed", r.status, text);
-      alert(`OSM load failed (${r.status}). ${text || "Check server logs."}`);
-      return;
+  // ------- Actions -------
+  const loadSyntheticWorld = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      const body = { mode: "synthetic", city_w: cityWidth, city_h: cityHeight, seed };
+      const r = await fetch(`${API}/world_from_osm`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        alert(`Synthetic world load failed (${r.status}). ${text || "Check server logs."}`);
+        return;
+      }
+      const worldData = await r.json();
+      send({ type: "set_world", world: worldData });
+
+      // Flip to post phase only after success
+      setPhase("post");
+      setActiveTab("algorithms");
+    } finally {
+      setIsLoading(false);
     }
-    const world = await r.json();
-    send({ type: "set_world", world });
   };
 
+  const loadOSMWorld = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      const body = { mode: "osm", north, south, east, west, target_buildings: maxB, limit: Math.max(100, maxB) };
+      const r = await fetch(`${API}/world_from_osm`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        alert(`OSM world load failed (${r.status}). ${text || "Check server logs."}`);
+        return;
+      }
+      const worldData = await r.json();
+      send({ type: "set_world", world: worldData });
 
-function seedDrones(count = 200) {
-  const world = useSimStore.getState().world;
+      setPhase("post");
+      setActiveTab("algorithms");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  // Use backend world.size when available; else derive from obstacles
-  const hasSize = world.size && world.size[0] > 0 && world.size[1] > 0 && world.size[2] > 0;
-  const W = hasSize ? world.size[0] : Math.max(100, Math.max(...world.obstacles.map(o => o.center.x + o.size.x/2) ?? [100]));
-  const H = hasSize ? world.size[1] : Math.max(100, Math.max(...world.obstacles.map(o => o.center.y + o.size.y/2) ?? [100]));
-  const Z = hasSize ? world.size[2] : Math.max(50, Math.max(...world.obstacles.map(o => o.size.z) ?? [50]) + 20);
+  function seedDrones(count = 200) {
+    const w = useSimStore.getState().world;
+    const hasSize = w.size && w.size[0] > 0 && w.size[1] > 0 && w.size[2] > 0;
+    const W = hasSize ? w.size[0] : Math.max(100, Math.max(...w.obstacles.map(o => o.center.x + o.size.x / 2) ?? [100]));
+    const H = hasSize ? w.size[1] : Math.max(100, Math.max(...w.obstacles.map(o => o.center.y + o.size.y / 2) ?? [100]));
+    const Z = hasSize ? w.size[2] : Math.max(50, Math.max(...w.obstacles.map(o => o.size.z) ?? [50]) + 20);
+    const maxBuildingZ = w.obstacles.length ? Math.max(...w.obstacles.map(o => o.size.z)) : 0;
 
-  const maxBuildingZ = world.obstacles.length ? Math.max(...world.obstacles.map(o => o.size.z)) : 0;
+    const margin = 5;
+    const zMin = Math.min(Z - 2, maxBuildingZ + 5);
+    const zMax = Math.min(Z - 1, Math.max(zMin + 1, maxBuildingZ + 20));
+    const rnd = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
-  const margin = 5;                         // keep away from edges
-  const zMin = Math.min(Z - 2, maxBuildingZ + 5);
-  const zMax = Math.min(Z - 1, Math.max(zMin + 1, maxBuildingZ + 20));
-  const rnd = (lo:number, hi:number) => lo + Math.random()*(hi - lo);
+    const ds = Array.from({ length: count }, (_, i) => ({
+      id: String(i),
+      pos: { x: rnd(margin, Math.max(margin, W - margin)), y: rnd(margin, Math.max(margin, H - margin)), z: rnd(zMin, zMax) },
+      vel: { x: 0, y: 0, z: 0 },
+      target: { x: rnd(margin, Math.max(margin, W - margin)), y: rnd(margin, Math.max(margin, H - margin)), z: rnd(zMin, zMax) },
+      path: [],
+    }));
+    send({ type: "set_drones", drones: ds });
+  }
 
-  const drones = Array.from({length: count}, (_, i) => ({
-    id: String(i),
-    pos: {
-      x: rnd(margin, Math.max(margin, W - margin)),
-      y: rnd(margin, Math.max(margin, H - margin)),
-      z: rnd(zMin, zMax),
-    },
-    vel: { x: 0, y: 0, z: 0 },
-    target: {
-      x: rnd(margin, Math.max(margin, W - margin)),
-      y: rnd(margin, Math.max(margin, H - margin)),
-      z: rnd(zMin, zMax),
-    },
-    path: [],
-  }));
+  const NavigationItem = ({ icon: Icon, label, isActive, onClick }: {
+    icon: React.ComponentType<{ size?: number }>;
+    label: string;
+    isActive: boolean;
+    onClick: () => void;
+  }) => (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-3 px-4 py-2 w-full text-left rounded-lg transition-colors ${isActive ? "bg-white/30 text-blue-800" : "text-gray-800 hover:bg-white/20"}`}
+    >
+      <Icon size={18} />
+      <span className="font-medium">{label}</span>
+    </button>
+  );
 
-  send({ type: "set_drones", drones });
-}
-
+  const inWorldSetup = phase === "world";
 
   return (
-    <div style={{position:"absolute", top:12, left:12, padding:12, background:"rgba(20,22,25,0.7)", borderRadius:12, zIndex: 2}}>
-      <div style={{color:"#fff", fontWeight:600, marginBottom:8}}>Controls</div>
+    <>
+      {/* Floating toggle button */}
+      <button
+        onClick={toggle}
+        aria-label={open ? "Hide control panel" : "Show control panel"}
+        className={`
+          fixed top-4 z-50 flex items-center gap-2
+          px-3 py-2 rounded-full border
+          ${open ? "bg-white/70 left-[320px]" : "bg-white/30 left-6"}
+          border-white/40 backdrop-blur-xl shadow-lg
+          hover:bg-white/80 transition-all duration-300
+        `}
+        style={{ transform: "translateX(-50%)" }}
+      >
+        {open ? <PanelLeftClose size={16} /> : <PanelRightOpen size={16} />}
+        <span className="text-[12px] font-semibold text-gray-800">{open ? "Hide" : "Show"}</span>
+      </button>
 
-      <label style={{color:"#ddd"}}>Algorithm</label><br/>
-      <select value={selected ?? ""} onChange={e=> setSelected(e.target.value)} style={{width:240, marginBottom:6}}>
-        {algorithms.map(a => <option key={a} value={a}>{a}</option>)}
-      </select>
+      {/* Liquid-crystal sidebar */}
+      <div
+        className={`
+          fixed left-0 top-0 h-full w-80
+          ${open ? "translate-x-0" : "-translate-x-full"}
+          transition-transform duration-300 ease-out
+          z-40
+        `}
+        style={{ pointerEvents: open ? "auto" : "none" }}
+      >
+        <div
+          className="
+            h-full w-full flex flex-col
+            bg-white/20 backdrop-blur-xl
+            border-r border-white/30 shadow-2xl
+          "
+        >
+          {/* Header */}
+          <div className="p-4 border-b border-white/30">
+            <h1 className="text-xl font-bold text-gray-900 drop-shadow-sm">Drone Control</h1>
+            <p className="text-[11px] text-gray-700">v1.0</p>
+          </div>
 
-      <div style={{color:"#ddd", marginTop:6}}>Speed: {speed} m/s</div>
-      <input type="range" min={5} max={120} value={speed} onChange={e=>setSpeed(+e.target.value)} style={{width:240}}/>
+          {/* Navigation */}
+          <div className="p-3 space-y-1">
+            {inWorldSetup ? (
+              <NavigationItem icon={Globe} label="World Setup" isActive={true} onClick={() => { }} />
+            ) : (
+              <>
+                <NavigationItem icon={Brain} label="Algorithms" isActive={activeTab === "algorithms"} onClick={() => setActiveTab("algorithms")} />
+                <NavigationItem icon={Zap} label="Simulation" isActive={activeTab === "simulation"} onClick={() => setActiveTab("simulation")} />
+              </>
+            )}
+          </div>
 
-      <div style={{color:"#ddd", marginTop:6}}>Tick rate: {tickRate} Hz</div>
-      <input type="range" min={1} max={60} value={tickRate} onChange={e=>setTickRate(+e.target.value)} style={{width:240}}/>
+          <Separator.Root className="h-px bg-white/30 mx-3" />
 
-      <div style={{marginTop:10, color:"#aaa"}}>A* Grid Params</div>
-      <div style={{color:"#ddd"}}>Cell: {cell} m</div>
-      <input type="range" min={4} max={30} value={cell} onChange={e=>setCell(+e.target.value)} style={{width:240}}/>
-      <div style={{color:"#ddd"}}>Clearance: {clearance} m</div>
-      <input type="range" min={0} max={20} value={clearance} onChange={e=>setClearance(+e.target.value)} style={{width:240}}/>
-      <div style={{color:"#ddd"}}>Cruise Alt: {cruise} m</div>
-      <input type="range" min={20} max={200} value={cruise} onChange={e=>setCruise(+e.target.value)} style={{width:240}}/>
+          {/* Content */}
+          <div className="flex-1 p-3 overflow-y-auto">
+            {/* -------- World Setup (locked after done) -------- */}
+            {inWorldSetup && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 mb-3">World Setup</h2>
 
-      <div style={{marginTop:8, display:"flex", gap:8}}>
-        <button onClick={()=> { seedDrones(200); send({type:"start"}); }}>Start</button>
-        <button onClick={()=> send({type:"pause"})}>Pause</button>
-        <button onClick={()=> send({type:"reset"})}>Reset</button>
-        <button onClick={()=> seedDrones(200)}>Seed 200 drones</button>
+                {/* Mode selection */}
+                {!mode ? (
+                  <div className="space-y-3">
+                    <div className="bg-white/30 p-3 rounded border border-white/40">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Select World Type</h3>
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => setMode("synthetic")}
+                          className="w-full p-3 border border-white/40 rounded hover:bg-white/40 transition-colors text-left"
+                        >
+                          <div className="text-lg mb-1">🌆</div>
+                          <h4 className="font-semibold text-gray-900 text-sm">Synthetic World</h4>
+                          <p className="text-xs text-gray-700">Procedurally created city</p>
+                        </button>
+                        <button
+                          onClick={() => setMode("osm")}
+                          className="w-full p-3 border border-white/40 rounded hover:bg-white/40 transition-colors text-left"
+                        >
+                          <div className="text-lg mb-1">🏙️</div>
+                          <h4 className="font-semibold text-gray-900 text-sm">Real World (OSM)</h4>
+                          <p className="text-xs text-gray-700">OpenStreetMap data</p>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : mode === "synthetic" ? (
+                  <div className="space-y-3">
+                    <div className="bg-white/30 p-3 rounded border border-white/40">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Synthetic World</h3>
+                      <div className="space-y-2">
+                        <div>
+                          <Label.Root className="text-xs font-medium text-gray-800">City Width (m)</Label.Root>
+                          <input
+                            type="number"
+                            value={cityWidth}
+                            onChange={(e) => setCityWidth(+e.target.value)}
+                            className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                        </div>
+                        <div>
+                          <Label.Root className="text-xs font-medium text-gray-800">City Height (m)</Label.Root>
+                          <input
+                            type="number"
+                            value={cityHeight}
+                            onChange={(e) => setCityHeight(+e.target.value)}
+                            className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                        </div>
+                        <div>
+                          <Label.Root className="text-xs font-medium text-gray-800">Seed</Label.Root>
+                          <input
+                            type="number"
+                            value={seed}
+                            onChange={(e) => setSeed(+e.target.value)}
+                            className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={loadSyntheticWorld}
+                          disabled={isLoading}
+                          className={`px-3 py-1 rounded text-xs transition-colors ${isLoading ? "bg-white/40 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                        >
+                          {isLoading ? "Generating..." : "Generate"}
+                        </button>
+                        <button
+                          onClick={() => setMode(null)}
+                          disabled={isLoading}
+                          className={`px-3 py-1 rounded text-xs transition-colors ${isLoading ? "bg-white/40 text-gray-400 cursor-not-allowed" : "bg-gray-600 text-white hover:bg-gray-700"}`}
+                        >
+                          Back
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="bg-white/30 p-3 rounded border border-white/40">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Real World (OSM)</h3>
+
+                      <div className="mb-2">
+                        <Label.Root className="text-xs font-medium text-gray-800 mb-1 block">Presets</Label.Root>
+                        <div className="flex flex-wrap gap-1">
+                          {Object.keys(PRESETS).map((name) => (
+                            <button
+                              key={name}
+                              onClick={() => applyPreset(name as keyof typeof PRESETS)}
+                              className="px-2 py-1 text-xs bg-white/50 text-gray-800 rounded border border-white/40 hover:bg-white/70 transition-colors"
+                            >
+                              {name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label.Root className="text-xs font-medium text-gray-800">North</Label.Root>
+                          <input type="number" value={north} onChange={(e) => setNorth(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </div>
+                        <div>
+                          <Label.Root className="text-xs font-medium text-gray-800">South</Label.Root>
+                          <input type="number" value={south} onChange={(e) => setSouth(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </div>
+                        <div>
+                          <Label.Root className="text-xs font-medium text-gray-800">East</Label.Root>
+                          <input type="number" value={east} onChange={(e) => setEast(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </div>
+                        <div>
+                          <Label.Root className="text-xs font-medium text-gray-800">West</Label.Root>
+                          <input type="number" value={west} onChange={(e) => setWest(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </div>
+                      </div>
+
+                      <div className="mt-2">
+                        <Label.Root className="text-xs font-medium text-gray-800">Target Buildings</Label.Root>
+                        <input type="number" value={maxB} onChange={(e) => setMaxB(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={loadOSMWorld}
+                          disabled={isLoading}
+                          className={`px-3 py-1 rounded text-xs transition-colors ${isLoading ? "bg-white/40 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                        >
+                          {isLoading ? "Loading..." : "Load City"}
+                        </button>
+                        <button
+                          onClick={() => setMode(null)}
+                          disabled={isLoading}
+                          className={`px-3 py-1 rounded text-xs transition-colors ${isLoading ? "bg-white/40 text-gray-400 cursor-not-allowed" : "bg-gray-600 text-white hover:bg-gray-700"}`}
+                        >
+                          Back
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* -------- Post phase tabs (visible only after world is generated) -------- */}
+            {!inWorldSetup && activeTab === "algorithms" && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 mb-3">Algorithms</h2>
+                <div className="space-y-3">
+                  <div className="bg-white/30 p-3 rounded border border-white/40">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Pathfinding Algorithm</h3>
+                    <div className="mb-3">
+                      <Label.Root className="text-xs font-medium text-gray-800 mb-1 block">Algorithm</Label.Root>
+                      <Select.Root value={selected ?? ""} onValueChange={setSelected}>
+                        <Select.Trigger className="w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400 flex items-center justify-between">
+                          <Select.Value placeholder="Select algorithm" />
+                          <Select.Icon><ChevronDown size={12} /></Select.Icon>
+                        </Select.Trigger>
+                        <Select.Portal>
+                          <Select.Content className="bg-white/90 backdrop-blur-md border border-white/40 rounded shadow-lg">
+                            <Select.Viewport className="p-1">
+                              {algorithms.map((algorithm) => (
+                                <Select.Item key={algorithm} value={algorithm} className="relative flex items-center px-6 py-1 text-xs text-gray-800 rounded cursor-pointer hover:bg-blue-50 focus:bg-blue-50 focus:outline-none">
+                                  <Select.ItemText>{algorithm}</Select.ItemText>
+                                  <Select.ItemIndicator className="absolute left-1"><Check size={12} /></Select.ItemIndicator>
+                                </Select.Item>
+                              ))}
+                            </Select.Viewport>
+                          </Select.Content>
+                        </Select.Portal>
+                      </Select.Root>
+                    </div>
+
+                    <Separator.Root className="h-px bg-white/30 my-3" />
+
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">A* Parameters</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <Label.Root className="text-xs font-medium text-gray-800">Cell: {cell}m</Label.Root>
+                        </div>
+                        <Slider.Root value={[cell]} onValueChange={([v]) => setCell(v)} min={4} max={30} step={1} className="relative flex items-center w-full h-4">
+                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
+                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </Slider.Root>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <Label.Root className="text-xs font-medium text-gray-800">Clearance: {clearance}m</Label.Root>
+                        </div>
+                        <Slider.Root value={[clearance]} onValueChange={([v]) => setClearance(v)} min={0} max={20} step={1} className="relative flex items-center w-full h-4">
+                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
+                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </Slider.Root>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <Label.Root className="text-xs font-medium text-gray-800">Cruise: {cruise}m</Label.Root>
+                        </div>
+                        <Slider.Root value={[cruise]} onValueChange={([v]) => setCruise(v)} min={20} max={200} step={5} className="relative flex items-center w-full h-4">
+                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
+                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </Slider.Root>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!inWorldSetup && activeTab === "simulation" && (
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 mb-3">Simulation</h2>
+                <div className="space-y-3">
+                  <div className="bg-white/30 p-3 rounded border border-white/40">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Parameters</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex justify-between mb-1"><Label.Root className="text-xs font-medium text-gray-800">Speed: {speed} m/s</Label.Root></div>
+                        <Slider.Root value={[speed]} onValueChange={([v]) => setSpeed(v)} min={5} max={120} step={5} className="relative flex items-center w-full h-4">
+                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
+                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </Slider.Root>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between mb-1"><Label.Root className="text-xs font-medium text-gray-800">Tick Rate: {tickRate} Hz</Label.Root></div>
+                        <Slider.Root value={[tickRate]} onValueChange={([v]) => setTickRate(v)} min={1} max={60} step={1} className="relative flex items-center w-full h-4">
+                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
+                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </Slider.Root>
+                      </div>
+                    </div>
+
+                    <Separator.Root className="h-px bg-white/30 my-3" />
+
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Drone Population</h4>
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-800 mb-2">Current: {drones.length} drones</p>
+                      <div className="flex gap-2 mb-3">
+                        <input
+                          type="number"
+                          min="1"
+                          max="1000"
+                          value={droneCount}
+                          className="w-20 px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          onChange={(e) => setDroneCount(Math.min(1000, Math.max(1, +e.target.value)))}
+                        />
+                      </div>
+                    </div>
+
+                    <Separator.Root className="h-px bg-white/30 my-3" />
+
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Controls</h4>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          seedDrones(droneCount);
+                          send({ type: "start" });
+                        }}
+                        className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 transition-colors"
+                      >
+                        Start
+                      </button>
+                      <button onClick={() => send({ type: "pause" })} className="bg-yellow-500 text-white px-3 py-1 rounded text-xs hover:bg-yellow-600 transition-colors">Pause</button>
+                      <button onClick={() => send({ type: "reset" })} className="bg-rose-600 text-white px-3 py-1 rounded text-xs hover:bg-rose-700 transition-colors">Reset</button>
+                    </div>
+
+                    <div className="mt-2 p-2 bg-white/40 rounded text-xs">
+                      <p className="text-gray-800">Tick: {tick}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="p-3 border-t border-white/30">
+            <p className="text-[11px] text-gray-800">Drone Path Optimizer</p>
+          </div>
+        </div>
       </div>
-
-      <div style={{color:"#aaa", marginTop:8}}>Tick: {tick}</div>
-
-      {/* City Loader Section */}
-      <div style={{marginTop:12, paddingTop:12, borderTop:"1px solid rgba(255,255,255,0.1)"}}>
-        <div style={{color:"#fff", fontWeight:600, marginBottom:6}}>City Patch (OSM)</div>
-
-        <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:8}}>
-          {Object.keys(PRESETS).map(name => (
-            <button key={name} onClick={()=>applyPreset(name as keyof typeof PRESETS)}>{name}</button>
-          ))}
-        </div>
-
-        <div style={{display:"grid", gridTemplateColumns:"auto auto", gap:6}}>
-          <label>north</label><input value={north} onChange={e=>setNorth(+e.target.value)} />
-          <label>south</label><input value={south} onChange={e=>setSouth(+e.target.value)} />
-          <label>east</label><input value={east} onChange={e=>setEast(+e.target.value)} />
-          <label>west</label><input value={west} onChange={e=>setWest(+e.target.value)} />
-          <label>max buildings</label><input value={maxB} onChange={e=>setMaxB(+e.target.value)} />
-        </div>
-
-        <button onClick={loadCity} style={{marginTop:8, width:"100%"}}>Load City Patch</button>
-        <div style={{marginTop:6, fontSize:12, color:"#bbb"}}>
-          Tip: keep bboxes under ~0.5 km × 0.5 km for quick Overpass queries.
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

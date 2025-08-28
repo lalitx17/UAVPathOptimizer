@@ -191,7 +191,7 @@ export default function DeckScene() {
       getPath: (d) => d.path!.map((p: Vec3) => [p.x, p.y, p.z ?? 0] as [number, number, number]),
       widthUnits: "pixels",
       getWidth: 6,
-      getColor: (d, info) => ( (info.index ?? 0) % 2 === 0 ? [0, 123, 255, 255] : [40, 167, 69, 255]),
+      getColor: (d, info) => ((info.index ?? 0) % 2 === 0 ? [0, 123, 255, 255] : [40, 167, 69, 255]),
       coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
     });
 
@@ -239,7 +239,7 @@ export default function DeckScene() {
       layers={layers}
       effects={[effects]}
       views={new OrbitView()}
-      controller={{ 
+      controller={{
         inertia: true,
         scrollZoom: true,
         dragPan: true,
