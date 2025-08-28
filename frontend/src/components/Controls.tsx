@@ -50,7 +50,7 @@ export default function Controls() {
   };
 
   const loadCity = async () => {
-    const body = { north, south, east, west, fast: true, max_buildings: maxB, default_height_m: 15, floor_height_m: 3 };
+    const body = { mode: "synthetic", "city_w": 3000, "city_h": 3000, "seed":42  };
     const r = await fetch(`${API}/world_from_osm`, {
       method: "POST",
       headers: { "Content-Type":"application/json" },
