@@ -45,7 +45,7 @@ export default function CityLoader() {
   };
 
   return (
-    <div style={{position:"absolute", bottom:12, left:12, padding:10, background:"rgba(20,22,25,0.7)", borderRadius:10, color:"#eee", width: 320}}>
+    <div style={{position:"absolute", bottom:12, right:12, padding:10, background:"rgba(20,22,25,0.7)", borderRadius:10, color:"#eee", width: 320, zIndex: 3}}>
       <div style={{fontWeight:600, marginBottom:6}}>City Patch (OSM)</div>
 
       <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:8}}>

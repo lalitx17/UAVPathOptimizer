@@ -1,9 +1,14 @@
 import { COORDINATE_SYSTEM, OrbitView } from "@deck.gl/core";
-import { PathLayer, PolygonLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { PathLayer, PolygonLayer } from "@deck.gl/layers";
+import { ScenegraphLayer } from "@deck.gl/mesh-layers";
 import DeckGL from "@deck.gl/react";
 import { useMemo } from "react";
 import { useSimStore } from "../state/simStore";
 import type { Building, Drone, Vec3 } from "../types";
+
+
+const DRONE_MODEL_URL =
+  (import.meta.env.VITE_DRONE_MODEL as string) || "/drone.glb";
 
 function rectFootprint(b: Building) {
   const hw = b.size.x/2, hd = b.size.y/2;
@@ -35,13 +40,22 @@ export default function DeckScene() {
       coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
     });
 
-    const scatter = new ScatterplotLayer({
-      id: "drones",
-      data: drones,
-      getPosition: (d: Drone)=> [d.pos.x, d.pos.y, d.pos.z ?? 0],
-      getRadius: 6, radiusUnits: "pixels", pickable: true,
-      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-    });
+    const drone3D = new ScenegraphLayer<Drone>({
+        id: "drone-3d",
+        data: drones,
+        scenegraph: DRONE_MODEL_URL,
+        getPosition: (d) => [d.pos.x, d.pos.y, d.pos.z ?? 0],
+        getOrientation: (d) => {
+          const yawDeg =
+            (Math.atan2(d.vel?.y ?? 0, d.vel?.x ?? 1e-6) * 180) / Math.PI;
+          return [0, 0, yawDeg + 90];
+        },
+        sizeScale: 15,
+        pickable: true,
+        _lighting: "pbr",
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        loadOptions: { gltf: { decompressMeshes: true } },
+      });
 
     const paths = new PathLayer({
       id: "paths",
@@ -51,7 +65,7 @@ export default function DeckScene() {
       coordinateSystem: COORDINATE_SYSTEM.CARTESIAN
     });
 
-    return [buildings, paths, scatter];
+    return [buildings, paths, drone3D];
   }, [drones, world]);
 
   const initialViewState = useMemo(()=>({
@@ -65,7 +79,7 @@ export default function DeckScene() {
       views={new OrbitView()}
       controller={true}
       initialViewState={initialViewState}
-      style={{ backgroundColor: 'white' }}
+      style={{ backgroundColor: 'white', position: 'absolute', inset: '0', zIndex: '1' }}
     />
   );
 }
