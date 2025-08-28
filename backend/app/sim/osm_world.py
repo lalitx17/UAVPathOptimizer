@@ -1,4 +1,3 @@
-# app/sim/osm_world.py
 from __future__ import annotations
 
 import math
@@ -11,7 +10,6 @@ from pyproj import Transformer
 
 from ..models import Building, Vec3, World
 
-# (north, south, east, west) in WGS84 degrees
 BBox = Tuple[float, float, float, float]
 
 

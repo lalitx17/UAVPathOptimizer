@@ -1,20 +1,20 @@
-// src/components/DeckScene.tsx
+import type { OrbitViewState } from "@deck.gl/core";
 import { AmbientLight, COORDINATE_SYSTEM, DirectionalLight, LightingEffect, OrbitView } from "@deck.gl/core";
-import { PathLayer, PolygonLayer, SolidPolygonLayer } from "@deck.gl/layers";
+import { PathLayer, PolygonLayer, ScatterplotLayer, SolidPolygonLayer } from "@deck.gl/layers";
 import { ScenegraphLayer } from "@deck.gl/mesh-layers";
 import DeckGL from "@deck.gl/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSimStore } from "../state/simStore";
 import type { Building, Drone, Vec3 } from "../types";
 
 const DRONE_MODEL_URL = (import.meta.env.VITE_DRONE_MODEL as string) || "/drone.glb";
 
-// ---------------------- helpers ----------------------
+interface GroundData { poly: [number, number][]; }
+interface BorderData { path: [number, number, number][]; }
+
 function rectFootprint(b: Building) {
-  const hw = b.size.x / 2,
-    hd = b.size.y / 2;
-  const cx = b.center.x,
-    cy = b.center.y;
+  const hw = b.size.x / 2, hd = b.size.y / 2;
+  const cx = b.center.x, cy = b.center.y;
   return [
     [cx - hw, cy - hd, 0],
     [cx + hw, cy - hd, 0],
@@ -23,128 +23,98 @@ function rectFootprint(b: Building) {
   ];
 }
 
-// color ramp based on height (meters)
-function buildingColor(h: number): [number, number, number, number] {
-  // clamp 8..120m to 0..1
-  const t = Math.max(0, Math.min(1, (h - 8) / 120));
-  // simple two-stage gradient: slate -> teal -> warm gold
-  const c1: [number, number, number] = [160, 169, 178]; // low
-  const c2: [number, number, number] = [62, 157, 158]; // mid
-  const c3: [number, number, number] = [218, 170, 81]; // tall
+function buildingColor(): [number, number, number, number] { return [64, 64, 64, 120]; }
+function buildingTopColor(): [number, number, number, number] { return [255, 255, 255, 255]; }
 
-  let r: number, g: number, b: number;
-  if (t < 0.55) {
-    const u = t / 0.55;
-    r = c1[0] + (c2[0] - c1[0]) * u;
-    g = c1[1] + (c2[1] - c1[1]) * u;
-    b = c1[2] + (c2[2] - c1[2]) * u;
-  } else {
-    const u = (t - 0.55) / 0.45;
-    r = c2[0] + (c3[0] - c2[0]) * u;
-    g = c2[1] + (c3[1] - c2[1]) * u;
-    b = c2[2] + (c3[2] - c2[2]) * u;
-  }
-  return [Math.round(r), Math.round(g), Math.round(b), 255];
+
+function freeViewState(vs: OrbitViewState): OrbitViewState {
+  return vs;
 }
 
-// keep camera within [0..W]x[0..H]
-function clampViewState(vs: any, W: number, H: number, margin = 10) {
-  const { zoom = 1, target = [W / 2, H / 2, 0] } = vs;
-  const scale = Math.pow(2, zoom);
-  const halfWidthWU = window.innerWidth / (2 * scale);
-  const halfHeightWU = window.innerHeight / (2 * scale);
-
-  if (W <= 2 * (halfWidthWU + margin) || H <= 2 * (halfHeightWU + margin)) {
-    return { ...vs, target: [W / 2, H / 2, 0] };
-  }
-  const minX = margin + halfWidthWU;
-  const maxX = W - margin - halfWidthWU;
-  const minY = margin + halfHeightWU;
-  const maxY = H - margin - halfHeightWU;
-
-  const x = Math.min(maxX, Math.max(minX, target[0]));
-  const y = Math.min(maxY, Math.max(minY, target[1]));
-  return { ...vs, target: [x, y, target[2] ?? 0] };
-}
-
-// ---------------------- component ----------------------
 export default function DeckScene() {
   const drones = useSimStore((s) => s.drones);
   const world = useSimStore((s) => s.world);
-  const [W, H, Z] = world.size ?? [100, 100, 50];
+  const [W, H] = world.size ?? [100, 100, 50];
 
-  // --- lighting for depth/shine
+  const TRAIL_LEN = 80;
+  const TRAIL_STEP = 1;
+  const frameRef = useRef(0);
+  const trailsRef = useRef<Map<string, [number, number, number][]>>(new Map());
+  const [trailData, setTrailData] = useState<{ id: string; path: [number, number, number][] }[]>([]);
+  const [trailDots, setTrailDots] = useState<{ p: [number, number, number]; age: number }[]>([]);
+
+  useEffect(() => {
+    frameRef.current++;
+    if (frameRef.current % TRAIL_STEP !== 0) return;
+
+    const map = trailsRef.current;
+    const liveIds = new Set<string>();
+    for (const d of drones) {
+      liveIds.add(d.id);
+      const arr = map.get(d.id) ?? [];
+      const p: [number, number, number] = [d.pos.x, d.pos.y, d.pos.z ?? 0];
+      if (arr.length === 0) {
+        arr.push(p);
+      } else {
+        const last = arr[arr.length - 1];
+        if (Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]) > 0.01) {
+          arr.push(p);
+        }
+      }
+      // cap length
+      if (arr.length > TRAIL_LEN) arr.splice(0, arr.length - TRAIL_LEN);
+      map.set(d.id, arr);
+    }
+    // drop trails of disappeared drones
+    for (const id of Array.from(map.keys())) if (!liveIds.has(id)) map.delete(id);
+
+    // flatten to layer data
+    const lines = Array.from(map.entries()).map(([id, path]) => ({ id, path }));
+    setTrailData(lines);
+
+    // optional: dots with fading alpha (age = index from tail)
+    const dots: { p: [number, number, number]; age: number }[] = [];
+    for (const path of map.values()) {
+      for (let i = 0; i < path.length; i += 4) { // subsample to keep it light
+        dots.push({ p: path[i], age: path.length - 1 - i });
+      }
+    }
+    setTrailDots(dots);
+  }, [drones]);
+
+
   const effects = useMemo(() => {
-    const ambient = new AmbientLight({
-      color: [255, 255, 255],
-      intensity: 0.5,
-    });
-    const dir = new DirectionalLight({
-      color: [255, 255, 255],
-      intensity: 1.2,
-      direction: [-1, -1, -2], // from NE, elevated
-    });
+    const ambient = new AmbientLight({ color: [255, 255, 255], intensity: 0.6 });
+    const dir = new DirectionalLight({ color: [255, 255, 255], intensity: 1.0, direction: [-1, -1, -1] });
     return new LightingEffect({ ambient, dir });
   }, []);
 
-  // --- materials for buildings
-  const buildingMaterial = useMemo(
-    () => ({
-      ambient: 0.35,
-      diffuse: 0.6,
-      shininess: 18,
-      specularColor: [80, 80, 80],
-    }),
-    []
-  );
+  const buildingMaterial = useMemo(() => ({
+    ambient: 0.35, diffuse: 0.6, shininess: 18, specularColor: [80, 80, 80] as [number, number, number],
+  }), []);
 
-  // --- layers
+
   const layers = useMemo(() => {
-    // beautiful, subtle ground the size of the world
-   // vivid ground
-const ground = new SolidPolygonLayer({
-    id: "ground",
-    data: [
-      {
-        poly: [
-          [0, 0],
-          [W, 0],
-          [W, H],
-          [0, H],
-        ],
-      },
-    ],
-    getPolygon: (d: any) => d.poly,
-    // vivid grass-like green (try also [60, 130, 200] for vivid blue)
-    getFillColor: [60, 180, 120, 255],
-    pickable: false,
-    extruded: false,
-    coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-  });
-  
+    const ground = new SolidPolygonLayer({
+      id: "ground",
+      data: [{ poly: [[0, 0], [W, 0], [W, H], [0, H]] }],
+      getPolygon: (d: GroundData) => d.poly,
+      getFillColor: [128, 128, 128, 255],
+      pickable: false,
+      extruded: false,
+      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+    });
 
-    // subtle world border
     const border = new PathLayer({
       id: "world-border",
-      data: [
-        {
-          path: [
-            [0, 0, 0],
-            [W, 0, 0],
-            [W, H, 0],
-            [0, H, 0],
-            [0, 0, 0],
-          ],
-        },
-      ],
-      getPath: (d: any) => d.path,
+      data: [{ path: [[0, 0, 0], [W, 0, 0], [W, H, 0], [0, H, 0], [0, 0, 0]] }],
+      getPath: (d: BorderData) => d.path,
       getWidth: 2,
       widthUnits: "pixels",
       getColor: [180, 180, 190, 180],
       coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
     });
 
-    // buildings with a pleasant palette by height
     const buildings = new PolygonLayer<Building>({
       id: "buildings",
       data: world.obstacles,
@@ -155,14 +125,76 @@ const ground = new SolidPolygonLayer({
       wireframe: false,
       stroked: true,
       getLineWidth: 1,
-      widthUnits: "pixels",
       getLineColor: [60, 70, 80, 140],
-      getFillColor: (b) => buildingColor(b.size.z),
+      getFillColor: () => buildingColor(),
       pickable: true,
       coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
     });
 
-    // drone model (unchanged, just looks better over the floor)
+    const buildingTops = new PolygonLayer<Building>({
+      id: "building-tops",
+      data: world.obstacles,
+      getPolygon: (b) => {
+        const hw = b.size.x / 2, hd = b.size.y / 2;
+        const cx = b.center.x, cy = b.center.y, h = b.size.z;
+        return [[cx - hw, cy - hd, h], [cx + hw, cy - hd, h], [cx + hw, cy + hd, h], [cx - hw, cy + hd, h]];
+      },
+      extruded: false,
+      material: buildingMaterial,
+      wireframe: false,
+      stroked: false,
+      getFillColor: () => buildingTopColor(),
+      pickable: false,
+      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+    });
+
+    const flightTrails = new PathLayer({
+      id: "flight-trails",
+      data: trailData,
+      getPath: (d: { id: string; path: [number, number, number][] }) => d.path,
+      getWidth: 3,
+      widthUnits: "pixels",
+      getColor: (d, { index }) => {
+        const i = (index ?? 0) % 6;
+        const palette: [number, number, number, number][] = [
+          [0, 123, 255, 180],   // blue
+          [40, 167, 69, 180],   // green
+          [255, 99, 132, 180],  // pink-red
+          [255, 159, 64, 180],  // orange
+          [153, 102, 255, 180], // purple
+          [23, 162, 184, 180],  // teal
+        ];
+        return palette[i];
+      },
+      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      parameters: { depthTest: true },
+    });
+
+    const trailPoints = new ScatterplotLayer({
+      id: "trail-dots",
+      data: trailDots,
+      getPosition: (d: { p: [number, number, number]; age: number }) => d.p,
+      getRadius: 2,
+      radiusUnits: "pixels",
+      getFillColor: (d: { age: number }) => {
+        const a = Math.max(40, 220 - d.age * (220 / TRAIL_LEN));
+        return [30, 30, 30, a];
+      },
+      pickable: false,
+      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      parameters: { depthTest: true },
+    });
+
+    const plannedPaths = new PathLayer<Drone>({
+      id: "paths",
+      data: drones.filter((d) => d.path && d.path.length > 0),
+      getPath: (d) => d.path!.map((p: Vec3) => [p.x, p.y, p.z ?? 0] as [number, number, number]),
+      widthUnits: "pixels",
+      getWidth: 6,
+      getColor: (d, info) => ( (info.index ?? 0) % 2 === 0 ? [0, 123, 255, 255] : [40, 167, 69, 255]),
+      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+    });
+
     const drone3D = new ScenegraphLayer<Drone>({
       id: "drone-3d",
       data: drones,
@@ -175,54 +207,47 @@ const ground = new SolidPolygonLayer({
       sizeScale: 15,
       pickable: true,
       _lighting: "pbr",
-      parameters: { depthTest: true },
       coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
       loadOptions: { gltf: { decompressMeshes: true } },
     });
 
-    // paths
-    const paths = new PathLayer<Drone>({
-      id: "paths",
-      data: drones.filter((d) => d.path && d.path.length > 0),
-      getPath: (d) => d.path!.map((p: Vec3) => [p.x, p.y, p.z ?? 0] as [number, number, number]),
-      widthUnits: "pixels",
-      getWidth: 2,
-      getColor: [20, 120, 230, 200],
-      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-    });
+    return [
+      ground,
+      border,
+      buildings,
+      buildingTops,
+      flightTrails,
+      trailPoints,
+      plannedPaths,
+      drone3D,
+    ];
+  }, [drones, world.obstacles, W, H, buildingMaterial, trailData, trailDots]);
 
-    return [ground, border, buildings, paths, drone3D];
-  }, [drones, world.obstacles, W, H, buildingMaterial]);
-
-  // --- view state with clamping
-  const [viewState, setViewState] = useState({
+  const [viewState, setViewState] = useState<OrbitViewState>({
     target: [W / 2, H / 2, 0] as [number, number, number],
     rotationX: 35,
     rotationOrbit: 30,
     zoom: 1.5,
   });
-
-  // recenter on world change
-  useEffect(() => {
-    setViewState((vs) => ({ ...vs, target: [W / 2, H / 2, 0] as [number, number, number] }));
-  }, [W, H]);
-
-  const onViewStateChange = useCallback(
-    ({ viewState: next }: any) => {
-      setViewState(clampViewState(next, W, H));
-    },
-    [W, H]
-  );
+  useEffect(() => { setViewState((vs) => ({ ...vs, target: [W / 2, H / 2, 0] as [number, number, number] })); }, [W, H]);
+  const onViewStateChange = useCallback(({ viewState: next }: { viewState: OrbitViewState }) => {
+    setViewState(freeViewState(next));
+  }, []);
 
   return (
     <DeckGL
       layers={layers}
       effects={[effects]}
       views={new OrbitView()}
-      controller={{ inertia: true }}
+      controller={{ 
+        inertia: true,
+        scrollZoom: true,
+        dragPan: true,
+        dragRotate: true,
+      }}
       viewState={viewState}
       onViewStateChange={onViewStateChange}
-      style={{ background: "linear-gradient(180deg, #f8fbff 0%, #ffffff 40%)", position: "absolute", inset: "0", zIndex: 1 }}
+      style={{ background: "linear-gradient(180deg, #e8e8e8 0%, #f5f5f5 40%)", position: "absolute", inset: "0", zIndex: "1" }}
     />
   );
 }
