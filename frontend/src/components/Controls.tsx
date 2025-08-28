@@ -66,16 +66,42 @@ export default function Controls() {
     send({ type: "set_world", world });
   };
 
-  const seedDrones = () => {
-    const drones = Array.from({length: 200}, (_,i)=>({
-      id: String(i),
-      pos: {x: Math.random()*900+50, y: Math.random()*900+50, z: Math.random()*30+5},
-      vel: {x:0,y:0,z:0},
-      target: {x: Math.random()*900+50, y: Math.random()*900+50, z: Math.random()*30+5},
-      path: []
-    }));
-    send({type:"set_drones", drones});
-  };
+
+function seedDrones(count = 200) {
+  const world = useSimStore.getState().world;
+
+  // Use backend world.size when available; else derive from obstacles
+  const hasSize = world.size && world.size[0] > 0 && world.size[1] > 0 && world.size[2] > 0;
+  const W = hasSize ? world.size[0] : Math.max(100, Math.max(...world.obstacles.map(o => o.center.x + o.size.x/2) ?? [100]));
+  const H = hasSize ? world.size[1] : Math.max(100, Math.max(...world.obstacles.map(o => o.center.y + o.size.y/2) ?? [100]));
+  const Z = hasSize ? world.size[2] : Math.max(50, Math.max(...world.obstacles.map(o => o.size.z) ?? [50]) + 20);
+
+  const maxBuildingZ = world.obstacles.length ? Math.max(...world.obstacles.map(o => o.size.z)) : 0;
+
+  const margin = 5;                         // keep away from edges
+  const zMin = Math.min(Z - 2, maxBuildingZ + 5);
+  const zMax = Math.min(Z - 1, Math.max(zMin + 1, maxBuildingZ + 20));
+  const rnd = (lo:number, hi:number) => lo + Math.random()*(hi - lo);
+
+  const drones = Array.from({length: count}, (_, i) => ({
+    id: String(i),
+    pos: {
+      x: rnd(margin, Math.max(margin, W - margin)),
+      y: rnd(margin, Math.max(margin, H - margin)),
+      z: rnd(zMin, zMax),
+    },
+    vel: { x: 0, y: 0, z: 0 },
+    target: {
+      x: rnd(margin, Math.max(margin, W - margin)),
+      y: rnd(margin, Math.max(margin, H - margin)),
+      z: rnd(zMin, zMax),
+    },
+    path: [],
+  }));
+
+  send({ type: "set_drones", drones });
+}
+
 
   return (
     <div style={{position:"absolute", top:12, left:12, padding:12, background:"rgba(20,22,25,0.7)", borderRadius:12, zIndex: 2}}>
@@ -101,10 +127,10 @@ export default function Controls() {
       <input type="range" min={20} max={200} value={cruise} onChange={e=>setCruise(+e.target.value)} style={{width:240}}/>
 
       <div style={{marginTop:8, display:"flex", gap:8}}>
-        <button onClick={()=> { seedDrones(); send({type:"start"}); }}>Start</button>
+        <button onClick={()=> { seedDrones(200); send({type:"start"}); }}>Start</button>
         <button onClick={()=> send({type:"pause"})}>Pause</button>
         <button onClick={()=> send({type:"reset"})}>Reset</button>
-        <button onClick={seedDrones}>Seed 200 drones</button>
+        <button onClick={()=> seedDrones(200)}>Seed 200 drones</button>
       </div>
 
       <div style={{color:"#aaa", marginTop:8}}>Tick: {tick}</div>
