@@ -425,7 +425,18 @@ export default function Controls() {
                         Start
                       </button>
                       <button onClick={() => send({ type: "pause" })} className="bg-yellow-500 text-white px-3 py-1 rounded text-xs hover:bg-yellow-600 transition-colors">Pause</button>
-                      <button onClick={() => send({ type: "reset" })} className="bg-rose-600 text-white px-3 py-1 rounded text-xs hover:bg-rose-700 transition-colors">Reset</button>
+                      <button
+                        onClick={() => {
+                          send({ type: "reset" });
+                          send({ type: "set_world", world: { obstacles: [], size: [1000, 1000, 1000] } });
+                          send({ type: "set_drones", drones: [] });
+                          setPhase("world");
+                          setMode(null);
+                        }}
+                        className="bg-rose-600 text-white px-3 py-1 rounded text-xs hover:bg-rose-700 transition-colors"
+                      >
+                        Reset
+                      </button>
                     </div>
 
                     <div className="mt-2 p-2 bg-white/40 rounded text-xs">
