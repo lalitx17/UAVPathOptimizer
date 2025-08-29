@@ -45,8 +45,6 @@ export const useSimStore = create<SimState>((set, get) => ({
   drones: [],
   algorithms: [],
   selectedAlgorithm: null,
-
-  // start with an *empty* world; size will be derived from obstacles or backend
   world: { size: [0, 0, 0], obstacles: [] },
   worldPresets: [],
 

@@ -13,19 +13,20 @@ from ..models import Building, Vec3, World
 BBox = Tuple[float, float, float, float]
 
 
-# ----------------------------
-# Shared helpers
-# ----------------------------
+
 def _levels_to_height_from_tags(tags: dict, default_h: float, floor_h: float) -> float:
     lv = tags.get("building:levels") or tags.get("levels")
+    if lv is None:
+        return default_h
     try:
-        return max(6.0, float(lv) * floor_h)
-    except Exception:
+        num_levels = float(lv)
+        return max(6.0, num_levels * floor_h)
+    except (ValueError, TypeError):
         return default_h
 
 
 def _grid_thin_uniform(
-    pts: List[Tuple[float, float, Dict]],  # [(x_m, y_m, tags)]
+    pts: List[Tuple[float, float, Dict]],
     world_w: float,
     world_h: float,
     target: int,
@@ -36,7 +37,7 @@ def _grid_thin_uniform(
         return []
     area = max(1e-6, world_w * world_h)
     cell = math.sqrt(area / max(1, target))
-    random.shuffle(pts)  # avoid directional bias
+    random.shuffle(pts)
     seen = set()
     kept: List[Tuple[float, float, Dict]] = []
     for x, y, tags in pts:
@@ -56,26 +57,21 @@ def _grid_thin_uniform(
     return kept
 
 
-# ----------------------------
-# FAST OSM centers → AABB world
-# ----------------------------
+
 def world_from_osm_bbox_fast_centers(
     bbox: BBox,
     *,
-    # density & fetching
-    target_buildings: int | None = None,  # if None → place up to min(len(pts), limit)
-    limit: int = 500,                     # server-side cap for fetched centers
-    oversample: float = 1.0,              # multiplier for limit (server may return fewer)
-    max_bbox_deg2: float = 0.02,          # keep <~ 1–2km² for speed (varies by latitude)
+    target_buildings: int | None = None,  
+    limit: int = 500,                     
+    oversample: float = 1.0,             
+    max_bbox_deg2: float = 0.02,         
     timeout_s: int = 25,
-    # building synthesis
     default_height_m: float = 15.0,
     floor_height_m: float = 3.0,
     width_range_m: Tuple[float, float] = (12.0, 36.0),
     depth_range_m: Tuple[float, float] = (12.0, 36.0),
     jitter_frac: float = 0.35,
     backfill: bool = True,
-    # world sizing
     fit_to_buildings: bool = True,
     ceiling_margin_m: float = 5.0,
     # infra
@@ -155,12 +151,9 @@ def world_from_osm_bbox_fast_centers(
     return World(size=(world_w, world_h, ceiling), obstacles=obstacles)
 
 
-# ----------------------------
-# SYNTHETIC city (streets/avenues/parks, large worlds)
-# ----------------------------
+
 def world_synthetic_city(
     *,
-    # city size (meters)
     city_w: float = 6000.0,
     city_h: float = 4000.0,
     # grid (meters)

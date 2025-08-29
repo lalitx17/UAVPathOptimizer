@@ -23,6 +23,7 @@ export function connectWs() {
       useSimStore.getState().setWorldPresets(msg.worlds ?? []);
     } else if (msg.type === "state") {
       useSimStore.getState().setStateFrame(msg.tick, msg.drones);
+      console.log(msg)
     } else if (msg.type === "error") {
       console.error("Server error:", msg.message);
     }

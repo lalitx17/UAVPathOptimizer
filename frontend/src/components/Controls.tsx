@@ -6,6 +6,7 @@ import { Check, ChevronDown, PanelRightOpen, PanelLeftClose } from "lucide-react
 import { useEffect, useState } from "react";
 import { send } from "../api/ws";
 import { useSimStore } from "../state/simStore";
+import type { World } from "../types";
 
 const API = "http://localhost:8000";
 
@@ -45,12 +46,10 @@ export default function Controls() {
   const [west, setWest] = useState(PRESETS["NYC – Times Sq (tiny)"].west);
   const [maxB, setMaxB] = useState(250);
 
-  // Synthetic params
   const [cityWidth, setCityWidth] = useState(3000);
   const [cityHeight, setCityHeight] = useState(3000);
   const [seed, setSeed] = useState(42);
 
-  // ------- Simulation params -------
   const [speed, setSpeed] = useState(30);
   const [tickRate, setTickRate] = useState(20);
   const [droneCount, setDroneCount] = useState(200);
@@ -139,21 +138,6 @@ export default function Controls() {
     }));
     send({ type: "set_drones", drones: ds });
   }
-
-  const NavigationItem = ({ icon: Icon, label, isActive, onClick }: {
-    icon: React.ComponentType<{ size?: number }>;
-    label: string;
-    isActive: boolean;
-    onClick: () => void;
-  }) => (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-3 px-4 py-2 w-full text-left rounded-lg transition-colors ${isActive ? "bg-white/30 text-blue-800" : "text-gray-800 hover:bg-white/20"}`}
-    >
-      <Icon size={18} />
-      <span className="font-medium">{label}</span>
-    </button>
-  );
 
   const inWorldSetup = phase === "world";
 
@@ -424,12 +408,14 @@ export default function Controls() {
                       >
                         Start
                       </button>
-                      <button onClick={() => send({ type: "pause" })} className="bg-yellow-500 text-white px-3 py-1 rounded text-xs hover:bg-yellow-600 transition-colors">Pause</button>
                       <button
                         onClick={() => {
                           send({ type: "reset" });
-                          send({ type: "set_world", world: { obstacles: [], size: [1000, 1000, 1000] } });
                           send({ type: "set_drones", drones: [] });
+                          useSimStore.setState({ drones: [], tick: 0 });
+                          const emptyWorld: World = { obstacles: [], size: [1000, 1000, 1000] as [number, number, number] };
+                          send({ type: "set_world", world: emptyWorld });
+                          useSimStore.setState({ world: emptyWorld });
                           setPhase("world");
                           setMode(null);
                         }}
