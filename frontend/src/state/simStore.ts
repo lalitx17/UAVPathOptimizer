@@ -18,18 +18,15 @@ type SimState = {
   setWorld(w: World): void;
   setWorldPresets(list: string[]): void;
 
-  // selectors/helpers
-  worldSize(): [number, number, number]; // <- compute from obstacles if needed
+  worldSize(): [number, number, number];
 };
 
 function sizeFromObstacles(w: World): [number, number, number] {
-  // If backend already provided size and it's > 0, trust it
   if (w.size && w.size[0] > 0 && w.size[1] > 0 && w.size[2] > 0) {
     return w.size;
   }
-  // Otherwise, compute tight bounds from obstacles (center ± size/2)
   if (!w.obstacles || w.obstacles.length === 0) {
-    return [100, 100, 50]; // tiny safe default
+    return [100, 100, 50]; 
   }
   const minX = Math.min(...w.obstacles.map(o => o.center.x - o.size.x * 0.5));
   const maxX = Math.max(...w.obstacles.map(o => o.center.x + o.size.x * 0.5));
@@ -59,7 +56,6 @@ export const useSimStore = create<SimState>((set, get) => ({
   setSelectedAlgorithm: (name) => set({ selectedAlgorithm: name }),
 
   setWorld: (w) => {
-    // If backend didn't fit size, we still keep it and expose a selector below
     set({ world: w });
   },
 

@@ -2,7 +2,7 @@ import * as Label from "@radix-ui/react-label";
 import * as Select from "@radix-ui/react-select";
 import * as Separator from "@radix-ui/react-separator";
 import * as Slider from "@radix-ui/react-slider";
-import { Brain, Check, ChevronDown, Globe, Zap, PanelRightOpen, PanelLeftClose } from "lucide-react";
+import { Check, ChevronDown, PanelRightOpen, PanelLeftClose } from "lucide-react";
 import { useEffect, useState } from "react";
 import { send } from "../api/ws";
 import { useSimStore } from "../state/simStore";
@@ -31,8 +31,7 @@ export default function Controls() {
   const [open, setOpen] = useState(true);
   const toggle = () => setOpen((o) => !o);
 
-  const [phase, setPhase] = useState<"world" | "post">("world");
-  const [activeTab, setActiveTab] = useState<"world" | "algorithms" | "simulation">("world");
+  const [phase, setPhase] = useState<"world" | "simulation">("world");
 
   // ------- World UI state -------
   const [mode, setMode] = useState<WorldMode | null>(null);
@@ -53,9 +52,6 @@ export default function Controls() {
   // ------- Simulation params -------
   const [speed, setSpeed] = useState(30);
   const [tickRate, setTickRate] = useState(20);
-  const [cell, setCell] = useState(10);
-  const [clearance, setClearance] = useState(5);
-  const [cruise, setCruise] = useState(60);
   const [droneCount, setDroneCount] = useState(200);
 
   // Backend param sync
@@ -65,9 +61,9 @@ export default function Controls() {
   useEffect(() => {
     send({
       type: "set_params",
-      params: { grid_cell_m: cell, clearance_m: clearance, cruise_alt_m: cruise, allow_diagonal: true },
+      params: { grid_cell_m: 10, clearance_m: 5, cruise_alt_m: 60, allow_diagonal: true },
     });
-  }, [cell, clearance, cruise]);
+  }, []);
 
   const applyPreset = (name: keyof typeof PRESETS) => {
     const b = PRESETS[name];
@@ -91,9 +87,8 @@ export default function Controls() {
       const worldData = await r.json();
       send({ type: "set_world", world: worldData });
 
-      // Flip to post phase only after success
-      setPhase("post");
-      setActiveTab("algorithms");
+      // Flip to simulation phase after success
+      setPhase("simulation");
     } finally {
       setIsLoading(false);
     }
@@ -115,8 +110,7 @@ export default function Controls() {
       const worldData = await r.json();
       send({ type: "set_world", world: worldData });
 
-      setPhase("post");
-      setActiveTab("algorithms");
+      setPhase("simulation");
     } finally {
       setIsLoading(false);
     }
@@ -194,26 +188,13 @@ export default function Controls() {
         <div
           className="
             h-full w-full flex flex-col
-            bg-white/20 backdrop-blur-xl
+            bg-gray-600/20 backdrop-blur-xl
             border-r border-white/30 shadow-2xl
           "
         >
           {/* Header */}
           <div className="p-4 border-b border-white/30">
-            <h1 className="text-xl font-bold text-gray-900 drop-shadow-sm">Drone Control</h1>
-            <p className="text-[11px] text-gray-700">v1.0</p>
-          </div>
-
-          {/* Navigation */}
-          <div className="p-3 space-y-1">
-            {inWorldSetup ? (
-              <NavigationItem icon={Globe} label="World Setup" isActive={true} onClick={() => { }} />
-            ) : (
-              <>
-                <NavigationItem icon={Brain} label="Algorithms" isActive={activeTab === "algorithms"} onClick={() => setActiveTab("algorithms")} />
-                <NavigationItem icon={Zap} label="Simulation" isActive={activeTab === "simulation"} onClick={() => setActiveTab("simulation")} />
-              </>
-            )}
+            <h1 className="text-xl font-bold text-gray-900 drop-shadow-sm">UAV Simulation</h1>
           </div>
 
           <Separator.Root className="h-px bg-white/30 mx-3" />
@@ -235,7 +216,6 @@ export default function Controls() {
                           onClick={() => setMode("synthetic")}
                           className="w-full p-3 border border-white/40 rounded hover:bg-white/40 transition-colors text-left"
                         >
-                          <div className="text-lg mb-1">🌆</div>
                           <h4 className="font-semibold text-gray-900 text-sm">Synthetic World</h4>
                           <p className="text-xs text-gray-700">Procedurally created city</p>
                         </button>
@@ -243,7 +223,6 @@ export default function Controls() {
                           onClick={() => setMode("osm")}
                           className="w-full p-3 border border-white/40 rounded hover:bg-white/40 transition-colors text-left"
                         >
-                          <div className="text-lg mb-1">🏙️</div>
                           <h4 className="font-semibold text-gray-900 text-sm">Real World (OSM)</h4>
                           <p className="text-xs text-gray-700">OpenStreetMap data</p>
                         </button>
@@ -367,81 +346,36 @@ export default function Controls() {
               </div>
             )}
 
-            {/* -------- Post phase tabs (visible only after world is generated) -------- */}
-            {!inWorldSetup && activeTab === "algorithms" && (
-              <div>
-                <h2 className="text-lg font-bold text-gray-900 mb-3">Algorithms</h2>
-                <div className="space-y-3">
-                  <div className="bg-white/30 p-3 rounded border border-white/40">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Pathfinding Algorithm</h3>
-                    <div className="mb-3">
-                      <Label.Root className="text-xs font-medium text-gray-800 mb-1 block">Algorithm</Label.Root>
-                      <Select.Root value={selected ?? ""} onValueChange={setSelected}>
-                        <Select.Trigger className="w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400 flex items-center justify-between">
-                          <Select.Value placeholder="Select algorithm" />
-                          <Select.Icon><ChevronDown size={12} /></Select.Icon>
-                        </Select.Trigger>
-                        <Select.Portal>
-                          <Select.Content className="bg-white/90 backdrop-blur-md border border-white/40 rounded shadow-lg">
-                            <Select.Viewport className="p-1">
-                              {algorithms.map((algorithm) => (
-                                <Select.Item key={algorithm} value={algorithm} className="relative flex items-center px-6 py-1 text-xs text-gray-800 rounded cursor-pointer hover:bg-blue-50 focus:bg-blue-50 focus:outline-none">
-                                  <Select.ItemText>{algorithm}</Select.ItemText>
-                                  <Select.ItemIndicator className="absolute left-1"><Check size={12} /></Select.ItemIndicator>
-                                </Select.Item>
-                              ))}
-                            </Select.Viewport>
-                          </Select.Content>
-                        </Select.Portal>
-                      </Select.Root>
-                    </div>
-
-                    <Separator.Root className="h-px bg-white/30 my-3" />
-
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">A* Parameters</h4>
-                    <div className="space-y-2">
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <Label.Root className="text-xs font-medium text-gray-800">Cell: {cell}m</Label.Root>
-                        </div>
-                        <Slider.Root value={[cell]} onValueChange={([v]) => setCell(v)} min={4} max={30} step={1} className="relative flex items-center w-full h-4">
-                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
-                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </Slider.Root>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <Label.Root className="text-xs font-medium text-gray-800">Clearance: {clearance}m</Label.Root>
-                        </div>
-                        <Slider.Root value={[clearance]} onValueChange={([v]) => setClearance(v)} min={0} max={20} step={1} className="relative flex items-center w-full h-4">
-                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
-                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </Slider.Root>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <Label.Root className="text-xs font-medium text-gray-800">Cruise: {cruise}m</Label.Root>
-                        </div>
-                        <Slider.Root value={[cruise]} onValueChange={([v]) => setCruise(v)} min={20} max={200} step={5} className="relative flex items-center w-full h-4">
-                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
-                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </Slider.Root>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!inWorldSetup && activeTab === "simulation" && (
+            {/* -------- Simulation (visible only after world is generated) -------- */}
+            {!inWorldSetup && (
               <div>
                 <h2 className="text-lg font-bold text-gray-900 mb-3">Simulation</h2>
                 <div className="space-y-3">
                   <div className="bg-white/30 p-3 rounded border border-white/40">
                     <h3 className="text-sm font-semibold text-gray-900 mb-2">Parameters</h3>
                     <div className="space-y-3">
+                      <div>
+                        <Label.Root className="text-xs font-medium text-gray-800 mb-1 block">Algorithm</Label.Root>
+                        <Select.Root value={selected ?? ""} onValueChange={setSelected}>
+                          <Select.Trigger className="w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400 flex items-center justify-between">
+                            <Select.Value placeholder="Select algorithm" />
+                            <Select.Icon><ChevronDown size={12} /></Select.Icon>
+                          </Select.Trigger>
+                          <Select.Portal>
+                            <Select.Content className="bg-white/90 backdrop-blur-md border border-white/40 rounded shadow-lg">
+                              <Select.Viewport className="p-1">
+                                {algorithms.map((algorithm) => (
+                                  <Select.Item key={algorithm} value={algorithm} className="relative flex items-center px-6 py-1 text-xs text-gray-800 rounded cursor-pointer hover:bg-blue-50 focus:bg-blue-50 focus:outline-none">
+                                    <Select.ItemText>{algorithm}</Select.ItemText>
+                                    <Select.ItemIndicator className="absolute left-1"><Check size={12} /></Select.ItemIndicator>
+                                  </Select.Item>
+                                ))}
+                              </Select.Viewport>
+                            </Select.Content>
+                          </Select.Portal>
+                        </Select.Root>
+                      </div>
+
                       <div>
                         <div className="flex justify-between mb-1"><Label.Root className="text-xs font-medium text-gray-800">Speed: {speed} m/s</Label.Root></div>
                         <Slider.Root value={[speed]} onValueChange={([v]) => setSpeed(v)} min={5} max={120} step={5} className="relative flex items-center w-full h-4">
@@ -479,7 +413,7 @@ export default function Controls() {
                     <Separator.Root className="h-px bg-white/30 my-3" />
 
                     <h4 className="text-sm font-semibold text-gray-900 mb-2">Controls</h4>
-                    <div className="flex gap-2">
+                    <div className="flex gap-4">
                       <button
                         onClick={() => {
                           seedDrones(droneCount);
@@ -504,7 +438,8 @@ export default function Controls() {
 
           {/* Footer */}
           <div className="p-3 border-t border-white/30">
-            <p className="text-[11px] text-gray-800">Drone Path Optimizer</p>
+            <p className="text-[11px] text-gray-800">UAV</p>
+            <p className="text-[11px] text-gray-700">v1.0</p>
           </div>
         </div>
       </div>
