@@ -29,6 +29,10 @@ export default function Controls() {
   const drones = useSimStore((s) => s.drones);
   const connected = useSimStore((s) => s.connected);
 
+  useEffect(() => {
+    console.log("Available algorithms:", algorithms);
+  }, [algorithms]);
+
   // ------- Sidebar open/close -------
   const [open, setOpen] = useState(true);
   const toggle = () => setOpen((o) => !o);
@@ -148,12 +152,12 @@ export default function Controls() {
         onClick={toggle}
         aria-label={open ? "Hide control panel" : "Show control panel"}
         className={`
-          fixed top-4 z-50 flex items-center gap-2
-          px-3 py-2 rounded-full border
-          ${open ? "bg-white/70 left-[320px]" : "bg-white/30 left-6"}
-          border-white/40 backdrop-blur-xl shadow-lg
-          hover:bg-white/80 transition-all duration-300
-        `}
+            fixed top-4 z-50 flex items-center gap-2
+            px-3 py-2 rounded-full border
+            ${open ? "bg-white/70 left-[320px]" : "bg-white/30 left-6"}
+            border-white/40 backdrop-blur-xl shadow-lg
+            hover:bg-white/80 transition-all duration-300
+          `}
         style={{ transform: "translateX(-50%)" }}
       >
         {open ? <PanelLeftClose size={16} /> : <PanelRightOpen size={16} />}
@@ -163,19 +167,19 @@ export default function Controls() {
       {/* Liquid-crystal sidebar */}
       <div
         className={`
-          fixed left-0 top-0 h-full w-80
-          ${open ? "translate-x-0" : "-translate-x-full"}
-          transition-transform duration-300 ease-out
-          z-40
-        `}
+            fixed left-0 top-0 h-full w-80
+            ${open ? "translate-x-0" : "-translate-x-full"}
+            transition-transform duration-300 ease-out
+            z-40
+          `}
         style={{ pointerEvents: open ? "auto" : "none" }}
       >
         <div
           className="
-            h-full w-full flex flex-col
-            bg-gray-600/20 backdrop-blur-xl
-            border-r border-white/30 shadow-2xl
-          "
+              h-full w-full flex flex-col
+              bg-gray-600/20 backdrop-blur-xl
+              border-r border-white/30 shadow-2xl
+            "
         >
           {/* Header */}
           <div className="p-4 border-b border-white/30">
@@ -341,24 +345,71 @@ export default function Controls() {
                     <div className="space-y-3">
                       <div>
                         <Label.Root className="text-xs font-medium text-gray-800 mb-1 block">Algorithm</Label.Root>
-                        <Select.Root value={selected ?? ""} onValueChange={setSelected}>
-                          <Select.Trigger className="w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400 flex items-center justify-between">
-                            <Select.Value placeholder="Select algorithm" />
-                            <Select.Icon><ChevronDown size={12} /></Select.Icon>
+                        <Select.Root value={selected ?? undefined} onValueChange={setSelected}>
+                          <Select.Trigger
+                            className="
+                              w-full px-3 py-2 
+                              border border-white/40 rounded-md
+                              text-xs bg-white/70 hover:bg-white/80
+                              focus:outline-none focus:ring-2 focus:ring-blue-400/30
+                              flex items-center justify-between gap-2
+                              transition-all duration-150 ease-in-out
+                              group
+                            "
+                          >
+                            <Select.Value placeholder={
+                              <span className="text-gray-500">Select algorithm...</span>
+                            } />
+                            <Select.Icon>
+                              <ChevronDown
+                                size={14}
+                                className="text-gray-500 group-hover:text-gray-700 transition-transform duration-200 group-data-[state=open]:rotate-180"
+                              />
+                            </Select.Icon>
                           </Select.Trigger>
+
                           <Select.Portal>
-                            <Select.Content className="bg-white/90 backdrop-blur-md border border-white/40 rounded shadow-lg">
+                            <Select.Content
+                              position="popper"
+                              sideOffset={4}
+                              className="
+                                w-[var(--radix-select-trigger-width)]
+                                min-w-[var(--radix-select-trigger-width)]
+                                bg-white/95 backdrop-blur-lg
+                                border border-white/40 rounded-lg
+                                shadow-lg shadow-black/5
+                                z-[1000] max-h-60 overflow-auto
+                                animate-in fade-in-0 zoom-in-95
+                                duration-100 ease-out
+                              "
+                            >
                               <Select.Viewport className="p-1">
                                 {algorithms.map((algorithm) => (
-                                  <Select.Item key={algorithm} value={algorithm} className="relative flex items-center px-6 py-1 text-xs text-gray-800 rounded cursor-pointer hover:bg-blue-50 focus:bg-blue-50 focus:outline-none">
+                                  <Select.Item
+                                    key={algorithm}
+                                    value={algorithm}
+                                    className="
+                                      relative flex items-center px-7 py-2
+                                      text-xs text-gray-800
+                                      rounded-md cursor-pointer
+                                      hover:bg-blue-50 hover:text-blue-600
+                                      focus:bg-blue-50 focus:text-blue-600
+                                      focus:outline-none
+                                      transition-colors duration-150
+                                      select-none
+                                    "
+                                  >
                                     <Select.ItemText>{algorithm}</Select.ItemText>
-                                    <Select.ItemIndicator className="absolute left-1"><Check size={12} /></Select.ItemIndicator>
+                                    <Select.ItemIndicator className="absolute left-2 text-blue-500">
+                                      <Check size={12} className="animate-in zoom-in-50 duration-100" />
+                                    </Select.ItemIndicator>
                                   </Select.Item>
                                 ))}
                               </Select.Viewport>
                             </Select.Content>
                           </Select.Portal>
                         </Select.Root>
+
                       </div>
 
                       <div>

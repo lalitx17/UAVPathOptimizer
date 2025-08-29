@@ -10,7 +10,6 @@ type SimState = {
   world: World;
   worldPresets: string[];
 
-  // actions
   setConnected(v: boolean): void;
   setStateFrame(tick: number, drones: Drone[]): void;
   setAlgorithms(list: string[]): void;
