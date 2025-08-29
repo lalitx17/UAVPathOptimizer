@@ -125,21 +125,54 @@ export default function Controls() {
     const hasSize = w.size && w.size[0] > 0 && w.size[1] > 0 && w.size[2] > 0;
     const W = hasSize ? w.size[0] : Math.max(100, Math.max(...w.obstacles.map(o => o.center.x + o.size.x / 2) ?? [100]));
     const H = hasSize ? w.size[1] : Math.max(100, Math.max(...w.obstacles.map(o => o.center.y + o.size.y / 2) ?? [100]));
-    const Z = hasSize ? w.size[2] : Math.max(50, Math.max(...w.obstacles.map(o => o.size.z) ?? [50]) + 20);
     const maxBuildingZ = w.obstacles.length ? Math.max(...w.obstacles.map(o => o.size.z)) : 0;
 
     const margin = 5;
-    const zMin = Math.min(Z - 2, maxBuildingZ + 5);
-    const zMax = Math.min(Z - 1, Math.max(zMin + 1, maxBuildingZ + 20));
+    const zMin = Math.min(122, maxBuildingZ + 5);
+    const zMax = Math.min(122, Math.max(zMin + 1, maxBuildingZ + 20)); // Ensure max height is 122m
     const rnd = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
-    const ds = Array.from({ length: count }, (_, i) => ({
-      id: String(i),
-      pos: { x: rnd(margin, Math.max(margin, W - margin)), y: rnd(margin, Math.max(margin, H - margin)), z: rnd(zMin, zMax) },
-      vel: { x: 0, y: 0, z: 0 },
-      target: { x: rnd(margin, Math.max(margin, W - margin)), y: rnd(margin, Math.max(margin, H - margin)), z: rnd(zMin, zMax) },
-      path: [],
-    }));
+    const generatePointAtDistance = (start: { x: number, y: number, z: number }, targetDistance: number) => {
+      const angle = Math.random() * 2 * Math.PI;
+      const dx = targetDistance * Math.cos(angle);
+      const dy = targetDistance * Math.sin(angle);
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const x = start.x + dx;
+        const y = start.y + dy;
+
+        if (x >= margin && x <= W - margin && y >= margin && y <= H - margin) {
+          return { x, y, z: rnd(zMin, zMax) };
+        }
+      }
+
+      return {
+        x: Math.min(Math.max(margin, start.x + dx), W - margin),
+        y: Math.min(Math.max(margin, start.y + dy), H - margin),
+        z: rnd(zMin, zMax)
+      };
+    };
+
+    const worldDiagonal = Math.sqrt(W * W + H * H);
+
+    const ds = Array.from({ length: count }, (_, i) => {
+      const startPos = {
+        x: rnd(margin, Math.max(margin, W - margin)),
+        y: rnd(margin, Math.max(margin, H - margin)),
+        z: rnd(zMin, zMax)
+      };
+
+      const targetDistance = worldDiagonal * (0.8 + Math.random() * 0.15);
+      const targetPos = generatePointAtDistance(startPos, targetDistance);
+
+      return {
+        id: String(i),
+        pos: startPos,
+        vel: { x: 0, y: 0, z: 0 },
+        target: targetPos,
+        path: [],
+      };
+    });
     send({ type: "set_drones", drones: ds });
   }
 

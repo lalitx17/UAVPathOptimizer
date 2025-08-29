@@ -5,7 +5,7 @@ import { ScenegraphLayer } from "@deck.gl/mesh-layers";
 import DeckGL from "@deck.gl/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSimStore } from "../state/simStore";
-import type { Building, Drone, Vec3 } from "../types";
+import type { Building, Drone } from "../types";
 
 const DRONE_MODEL_URL = (import.meta.env.VITE_DRONE_MODEL as string) || "/drone.glb";
 

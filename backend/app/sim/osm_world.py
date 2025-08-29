@@ -13,7 +13,6 @@ from ..models import Building, Vec3, World
 BBox = Tuple[float, float, float, float]
 
 
-
 def _levels_to_height_from_tags(tags: dict, default_h: float, floor_h: float) -> float:
     lv = tags.get("building:levels") or tags.get("levels")
     if lv is None:
@@ -157,8 +156,8 @@ def world_synthetic_city(
     city_w: float = 6000.0,
     city_h: float = 4000.0,
     # grid (meters)
-    street_w: float = 18.0,      # E-W
-    avenue_w: float = 28.0,      # N-S
+    street_w: float = 18.0,     
+    avenue_w: float = 28.0,     
     block_w: float = 140.0,
     block_h: float = 110.0,
     # per-block
@@ -171,10 +170,10 @@ def world_synthetic_city(
     park_prob: float = 0.08,
     plaza_prob: float = 0.04,
     # height model
-    base_h: float = 12.0,
-    floor_h: float = 3.2,
-    max_levels_cbd: int = 25,
-    min_levels_out: int = 3,
+    base_h: float = 15.0,
+    floor_h: float = 3.5,
+    max_levels_cbd: int = 40,
+    min_levels_out: int = 2,
     cbd_center_frac: Tuple[float, float] = (0.5, 0.5),
     cbd_falloff: float = 0.35,
     # random
@@ -221,7 +220,7 @@ def world_synthetic_city(
 
             r = random.random()
             if r < park_prob:
-                continue  # park/plaza: leave open
+                continue  
 
             inner_x0 = ax0 + setback_m
             inner_y0 = sy0 + setback_m
@@ -258,7 +257,22 @@ def world_synthetic_city(
                 cx = (x0 + x1) * 0.5; cy = (y0 + y1) * 0.5
                 bw = (x1 - x0); bd = (y1 - y0)
                 h = height_for_block(cx, cy)
-                h *= random.uniform(0.4, 0.7) if r < park_prob + plaza_prob else random.uniform(0.8, 1.2)
+                
+                # Calculate distance from edges (normalized 0-1)
+                edge_dist_x = min(cx / city_w, (city_w - cx) / city_w)
+                edge_dist_y = min(cy / city_h, (city_h - cy) / city_h)
+                edge_dist = min(edge_dist_x, edge_dist_y)
+                
+                # Higher chance of super-tall buildings near edges (up to 15% at edges, 0% at center)
+                edge_supertall_prob = 0.15 * (1.0 - min(1.0, edge_dist * 4))
+                is_supertall = random.random() < edge_supertall_prob
+                
+                if is_supertall:
+                    # Create dramatically taller buildings (2-4x normal height)
+                    h *= random.uniform(2.0, 4.0)
+                else:
+                    # Normal buildings get more height variation
+                    h *= random.uniform(0.4, 0.7) if r < park_prob + plaza_prob else random.uniform(0.6, 1.8)
 
                 obstacles.append(Building(id=str(uuid.uuid4()),
                                           center=Vec3(x=cx, y=cy, z=h * 0.5),
