@@ -357,9 +357,12 @@ export default function Controls() {
                               group
                             "
                           >
-                            <Select.Value placeholder={
-                              <span className="text-gray-500">Select algorithm...</span>
-                            } />
+                            <Select.Value
+                              placeholder={<span className="text-gray-500">SELECT ALGORITHM</span>}
+                              className="uppercase"
+                            >
+                              {selected && selected.toUpperCase().replace(/_/g, ' ')}
+                            </Select.Value>
                             <Select.Icon>
                               <ChevronDown
                                 size={14}
@@ -399,7 +402,9 @@ export default function Controls() {
                                       select-none
                                     "
                                   >
-                                    <Select.ItemText>{algorithm}</Select.ItemText>
+                                    <Select.ItemText>
+                                      {algorithm.toUpperCase().replace(/_/g, ' ')}
+                                    </Select.ItemText>
                                     <Select.ItemIndicator className="absolute left-2 text-blue-500">
                                       <Check size={12} className="animate-in zoom-in-50 duration-100" />
                                     </Select.ItemIndicator>

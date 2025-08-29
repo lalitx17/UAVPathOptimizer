@@ -185,16 +185,6 @@ export default function DeckScene() {
       parameters: { depthTest: true },
     });
 
-    const plannedPaths = new PathLayer<Drone>({
-      id: "paths",
-      data: drones.filter((d) => d.path && d.path.length > 0),
-      getPath: (d) => d.path!.map((p: Vec3) => [p.x, p.y, p.z ?? 0] as [number, number, number]),
-      widthUnits: "pixels",
-      getWidth: 6,
-      getColor: (d, info) => ((info.index ?? 0) % 2 === 0 ? [0, 123, 255, 255] : [40, 167, 69, 255]),
-      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-    });
-
     const drone3D = new ScenegraphLayer<Drone>({
       id: "drone-3d",
       data: drones,
@@ -218,7 +208,6 @@ export default function DeckScene() {
       buildingTops,
       flightTrails,
       trailPoints,
-      plannedPaths,
       drone3D,
     ];
   }, [drones, world.obstacles, W, H, buildingMaterial, trailData, trailDots]);
