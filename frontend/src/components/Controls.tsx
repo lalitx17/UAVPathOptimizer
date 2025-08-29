@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { send } from "../api/ws";
 import { useSimStore } from "../state/simStore";
 
-const API = import.meta.env.VITE_HTTP_API ?? "http://localhost:8000";
+const API = "http://localhost:8000";
 
 type BBox = { north: number; south: number; east: number; west: number };
 
@@ -26,6 +26,7 @@ export default function Controls() {
   const tick = useSimStore((s) => s.tick);
   const world = useSimStore((s) => s.world);
   const drones = useSimStore((s) => s.drones);
+  const connected = useSimStore((s) => s.connected);
 
   // ------- Sidebar open/close -------
   const [open, setOpen] = useState(true);
@@ -194,7 +195,7 @@ export default function Controls() {
         >
           {/* Header */}
           <div className="p-4 border-b border-white/30">
-            <h1 className="text-xl font-bold text-gray-900 drop-shadow-sm">UAV Simulation</h1>
+            <h1 className="text-xl font-bold text-gray-900 drop-shadow-sm">Control Panel</h1>
           </div>
 
           <Separator.Root className="h-px bg-white/30 mx-3" />
@@ -438,8 +439,17 @@ export default function Controls() {
 
           {/* Footer */}
           <div className="p-3 border-t border-white/30">
-            <p className="text-[11px] text-gray-800">UAV</p>
-            <p className="text-[11px] text-gray-700">v1.0</p>
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] text-gray-800">UAV Simulation</p>
+                  <p className="text-[11px] text-gray-700">v1.0</p>
+                </div>
+                <div className={`px-2 py-1 rounded-md text-[11px] ${connected ? 'bg-green-500/20 text-green-700' : 'bg-red-500/20 text-red-700'}`}>
+                  {connected ? 'Connected' : 'Disconnected'}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
