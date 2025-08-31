@@ -1,10 +1,10 @@
-# Drone Path Optimizer
+# UAV Path Optimizer Simulation
 
 ## Overview
 
 A comprehensive simulation system for testing drone path optimization algorithms in 3D space. Features real-time visualization, multiple optimization algorithms, and WebSocket-based communication.
 
-## Architecture
+## Simulation Architecture
 
 ### Backend (Python FastAPI + Uvicorn)
 
@@ -21,4 +21,3 @@ A comprehensive simulation system for testing drone path optimization algorithms
 - **Zustand**: Lightweight state management
 - **WebSocket**: Real-time data streaming from backend
 - **TypeScript**: Type-safe development
-

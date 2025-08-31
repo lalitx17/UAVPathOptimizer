@@ -15,5 +15,4 @@ class AlgoContext:
 class Algorithm:
     name: str = "base"
     def plan_paths(self, ctx: AlgoContext) -> None:
-        """Mutate ctx.drones in-place (e.g., set .path or .target)."""
         raise NotImplementedError

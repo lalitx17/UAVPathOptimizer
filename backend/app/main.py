@@ -105,20 +105,27 @@ async def ws_endpoint(ws: WebSocket):
 
             elif msg.type == "set_algorithm" and msg.algorithm:
                 try:
+                    print(f"Setting algorithm to: {msg.algorithm}")
                     engine.set_algorithm(msg.algorithm)
+                    print(f"Algorithm set successfully. Available algorithms: {engine.algorithms()}")
                 except KeyError as e:
+                    print(f"Error setting algorithm: {e}")
                     await ws.send_json(ErrorMsg(message=str(e)).model_dump())
 
             elif msg.type == "set_params" and msg.params is not None:
                 engine.set_params(msg.params)
 
             elif msg.type == "set_drones" and msg.drones is not None:
+                print(f"Setting {len(msg.drones)} drones")
                 engine.set_drones(msg.drones)
+                print(f"Current algorithm: {type(engine.algorithm).__name__}")
+                print(f"Current drones: {len(engine.drones)}")
 
             elif msg.type == "tick_rate" and msg.tick_rate_hz:
                 engine.tick_rate_hz = msg.tick_rate_hz
 
             elif msg.type == "start":
+                print(f"Starting simulation with {len(engine.drones)} drones and algorithm: {type(engine.algorithm).__name__}")
                 if not tick_task or tick_task.done():
                     tick_task = asyncio.create_task(engine.run(send_state))
 
@@ -130,16 +137,14 @@ async def ws_endpoint(ws: WebSocket):
                 tick_task = None
 
             elif msg.type == "reset":
-                # Reset everything to initial state
                 engine.tick = 0
-                engine.drones = []  # Clear all drones
-                engine.params = {}  # Reset parameters to defaults
+                engine.drones = []
+                engine.params = {}
                 if tick_task and not tick_task.done():
                     tick_task.cancel()
                     with contextlib.suppress(Exception):
                         await tick_task
                 tick_task = None
-                # Send updated state to client
                 await ws.send_json(MetaMsg(algorithms=engine.algorithms(), world=engine.world, worlds=[]).model_dump())
 
     except WebSocketDisconnect:

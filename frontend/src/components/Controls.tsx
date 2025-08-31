@@ -1,8 +1,9 @@
+// Controls.tsx
 import * as Label from "@radix-ui/react-label";
 import * as Select from "@radix-ui/react-select";
 import * as Separator from "@radix-ui/react-separator";
 import * as Slider from "@radix-ui/react-slider";
-import { Check, ChevronDown, PanelRightOpen, PanelLeftClose } from "lucide-react";
+import { Check, ChevronDown, PanelLeftClose, PanelRightOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { send } from "../api/ws";
 import { useSimStore } from "../state/simStore";
@@ -11,7 +12,6 @@ import type { World } from "../types";
 const API = "http://localhost:8000";
 
 type BBox = { north: number; south: number; east: number; west: number };
-
 const PRESETS: Record<string, BBox> = {
   "NYC – Times Sq (tiny)": { north: 40.7589, south: 40.7579, east: -73.984, west: -73.9862 },
   "Boston – Kendall (small)": { north: 42.3673, south: 42.3647, east: -71.0875, west: -71.0915 },
@@ -21,25 +21,30 @@ const PRESETS: Record<string, BBox> = {
 type WorldMode = "synthetic" | "osm";
 
 export default function Controls() {
+  // --------- Global sim state (via store) ---------
   const algorithms = useSimStore((s) => s.algorithms);
   const selected = useSimStore((s) => s.selectedAlgorithm);
   const setSelected = useSimStore((s) => s.setSelectedAlgorithm);
   const tick = useSimStore((s) => s.tick);
-  const world = useSimStore((s) => s.world);
   const drones = useSimStore((s) => s.drones);
   const connected = useSimStore((s) => s.connected);
 
+  // Prefer Bandit MHA* when available
   useEffect(() => {
-    console.log("Available algorithms:", algorithms);
-  }, [algorithms]);
+    if (!algorithms?.length) return;
+    if (selected && algorithms.includes(selected)) return;
+    const preferred = algorithms.includes("bandit_mha_star")
+      ? "bandit_mha_star"
+      : algorithms[0];
+    setSelected?.(preferred);
+  }, [algorithms, selected, setSelected]);
 
-  // ------- Sidebar open/close -------
+  // --------- Sidebar & phases ---------
   const [open, setOpen] = useState(true);
   const toggle = () => setOpen((o) => !o);
-
   const [phase, setPhase] = useState<"world" | "simulation">("world");
 
-  // ------- World UI state -------
+  // --------- World setup UI state ---------
   const [mode, setMode] = useState<WorldMode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,38 +55,47 @@ export default function Controls() {
   const [west, setWest] = useState(PRESETS["NYC – Times Sq (tiny)"].west);
   const [maxB, setMaxB] = useState(250);
 
+  // Synthetic city inputs
   const [cityWidth, setCityWidth] = useState(3000);
   const [cityHeight, setCityHeight] = useState(3000);
   const [seed, setSeed] = useState(42);
 
+  // Sim parameters
   const [speed, setSpeed] = useState(30);
   const [tickRate, setTickRate] = useState(20);
   const [droneCount, setDroneCount] = useState(200);
 
-  // Backend param sync
-  useEffect(() => { if (selected) send({ type: "set_algorithm", algorithm: selected }); }, [selected]);
-  useEffect(() => { send({ type: "set_params", params: { speed } }); }, [speed]);
-  useEffect(() => { send({ type: "tick_rate", tick_rate_hz: tickRate }); }, [tickRate]);
+  // ------ Keep backend params in sync (safe defaults) ------
+  // Base grid & motion defaults on mount
   useEffect(() => {
-    send({
-      type: "set_params",
-      params: { grid_cell_m: 10, clearance_m: 5, cruise_alt_m: 60, allow_diagonal: true },
-    });
+    send({ type: "set_params", params: { grid_cell_m: 20, clearance_m: 6, speed: 30 } });
   }, []);
+  // Live updates for controls
+  useEffect(() => {
+    send({ type: "set_params", params: { speed } });
+  }, [speed]);
+  useEffect(() => {
+    send({ type: "tick_rate", tick_rate_hz: tickRate });
+  }, [tickRate]);
 
   const applyPreset = (name: keyof typeof PRESETS) => {
     const b = PRESETS[name];
-    setNorth(b.north); setSouth(b.south); setEast(b.east); setWest(b.west);
+    setNorth(b.north);
+    setSouth(b.south);
+    setEast(b.east);
+    setWest(b.west);
   };
 
-  // ------- Actions -------
+  // --------- Actions: world loaders ---------
   const loadSyntheticWorld = async () => {
     if (isLoading) return;
     setIsLoading(true);
     try {
       const body = { mode: "synthetic", city_w: cityWidth, city_h: cityHeight, seed };
       const r = await fetch(`${API}/world_from_osm`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const text = await r.text().catch(() => "");
@@ -90,8 +104,6 @@ export default function Controls() {
       }
       const worldData = await r.json();
       send({ type: "set_world", world: worldData });
-
-      // Flip to simulation phase after success
       setPhase("simulation");
     } finally {
       setIsLoading(false);
@@ -102,9 +114,19 @@ export default function Controls() {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      const body = { mode: "osm", north, south, east, west, target_buildings: maxB, limit: Math.max(100, maxB) };
+      const body = {
+        mode: "osm",
+        north,
+        south,
+        east,
+        west,
+        target_buildings: maxB,
+        limit: Math.max(100, maxB),
+      };
       const r = await fetch(`${API}/world_from_osm`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const text = await r.text().catch(() => "");
@@ -113,26 +135,35 @@ export default function Controls() {
       }
       const worldData = await r.json();
       send({ type: "set_world", world: worldData });
-
       setPhase("simulation");
     } finally {
       setIsLoading(false);
     }
   };
 
+  // --------- Drone seeding ---------
   function seedDrones(count = 200) {
     const w = useSimStore.getState().world;
     const hasSize = w.size && w.size[0] > 0 && w.size[1] > 0 && w.size[2] > 0;
-    const W = hasSize ? w.size[0] : Math.max(100, Math.max(...w.obstacles.map(o => o.center.x + o.size.x / 2) ?? [100]));
-    const H = hasSize ? w.size[1] : Math.max(100, Math.max(...w.obstacles.map(o => o.center.y + o.size.y / 2) ?? [100]));
-    const maxBuildingZ = w.obstacles.length ? Math.max(...w.obstacles.map(o => o.size.z)) : 0;
+    const W =
+      hasSize
+        ? w.size[0]
+        : Math.max(100, Math.max(...(w.obstacles?.map((o) => o.center.x + o.size.x / 2) ?? [100])));
+    const H =
+      hasSize
+        ? w.size[1]
+        : Math.max(100, Math.max(...(w.obstacles?.map((o) => o.center.y + o.size.y / 2) ?? [100])));
+    const maxBuildingZ = w.obstacles?.length ? Math.max(...w.obstacles.map((o) => o.size.z)) : 0;
 
     const margin = 5;
     const zMin = Math.min(122, maxBuildingZ + 5);
-    const zMax = Math.min(122, Math.max(zMin + 1, maxBuildingZ + 20)); // Ensure max height is 122m
+    const zMax = Math.min(122, Math.max(zMin + 1, maxBuildingZ + 20));
     const rnd = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
-    const generatePointAtDistance = (start: { x: number, y: number, z: number }, targetDistance: number) => {
+    const generatePointAtDistance = (
+      start: { x: number; y: number; z: number },
+      targetDistance: number
+    ) => {
       const angle = Math.random() * 2 * Math.PI;
       const dx = targetDistance * Math.cos(angle);
       const dy = targetDistance * Math.sin(angle);
@@ -140,28 +171,24 @@ export default function Controls() {
       for (let attempt = 0; attempt < 10; attempt++) {
         const x = start.x + dx;
         const y = start.y + dy;
-
         if (x >= margin && x <= W - margin && y >= margin && y <= H - margin) {
           return { x, y, z: rnd(zMin, zMax) };
         }
       }
-
       return {
         x: Math.min(Math.max(margin, start.x + dx), W - margin),
         y: Math.min(Math.max(margin, start.y + dy), H - margin),
-        z: rnd(zMin, zMax)
+        z: rnd(zMin, zMax),
       };
     };
 
     const worldDiagonal = Math.sqrt(W * W + H * H);
-
     const ds = Array.from({ length: count }, (_, i) => {
       const startPos = {
         x: rnd(margin, Math.max(margin, W - margin)),
         y: rnd(margin, Math.max(margin, H - margin)),
-        z: rnd(zMin, zMax)
+        z: rnd(zMin, zMax),
       };
-
       const targetDistance = worldDiagonal * (0.8 + Math.random() * 0.15);
       const targetPos = generatePointAtDistance(startPos, targetDistance);
 
@@ -178,57 +205,56 @@ export default function Controls() {
 
   const inWorldSetup = phase === "world";
 
+  // --------- Render ---------
   return (
     <>
-      {/* Floating toggle button */}
+      {/* Toggle button */}
       <button
         onClick={toggle}
         aria-label={open ? "Hide control panel" : "Show control panel"}
         className={`
-            fixed top-4 z-50 flex items-center gap-2
-            px-3 py-2 rounded-full border
-            ${open ? "bg-white/70 left-[320px]" : "bg-white/30 left-6"}
-            border-white/40 backdrop-blur-xl shadow-lg
-            hover:bg-white/80 transition-all duration-300
-          `}
+          fixed top-4 z-50 flex items-center gap-2
+          px-3 py-2 rounded-full border
+          ${open ? "bg-white/70 left-[320px]" : "bg-white/30 left-6"}
+          border-white/40 backdrop-blur-xl shadow-lg
+          hover:bg-white/80 transition-all duration-300
+        `}
         style={{ transform: "translateX(-50%)" }}
       >
         {open ? <PanelLeftClose size={16} /> : <PanelRightOpen size={16} />}
         <span className="text-[12px] font-semibold text-gray-800">{open ? "Hide" : "Show"}</span>
       </button>
 
-      {/* Liquid-crystal sidebar */}
+      {/* Sidebar */}
       <div
         className={`
-            fixed left-0 top-0 h-full w-80
-            ${open ? "translate-x-0" : "-translate-x-full"}
-            transition-transform duration-300 ease-out
-            z-40
-          `}
+          fixed left-0 top-0 h-full w-80
+          ${open ? "translate-x-0" : "-translate-x-full"}
+          transition-transform duration-300 ease-out
+          z-40
+        `}
         style={{ pointerEvents: open ? "auto" : "none" }}
       >
         <div
           className="
-              h-full w-full flex flex-col
-              bg-gray-600/20 backdrop-blur-xl
-              border-r border-white/30 shadow-2xl
-            "
+            h-full w-full flex flex-col
+            bg-gray-600/20 backdrop-blur-xl
+            border-r border-white/30 shadow-2xl
+          "
         >
           {/* Header */}
           <div className="p-4 border-b border-white/30">
             <h1 className="text-xl font-bold text-gray-900 drop-shadow-sm">Control Panel</h1>
           </div>
-
           <Separator.Root className="h-px bg-white/30 mx-3" />
 
           {/* Content */}
           <div className="flex-1 p-3 overflow-y-auto">
-            {/* -------- World Setup (locked after done) -------- */}
+            {/* World setup */}
             {inWorldSetup && (
               <div>
                 <h2 className="text-lg font-bold text-gray-900 mb-3">World Setup</h2>
 
-                {/* Mode selection */}
                 {!mode ? (
                   <div className="space-y-3">
                     <div className="bg-white/30 p-3 rounded border border-white/40">
@@ -236,66 +262,63 @@ export default function Controls() {
                       <div className="space-y-2">
                         <button
                           onClick={() => setMode("synthetic")}
-                          className="w-full p-3 border border-white/40 rounded hover:bg-white/40 transition-colors text-left"
+                          className="w-full bg-white/70 hover:bg-white text-gray-900 rounded px-3 py-2 text-xs border border-white/50"
                         >
-                          <h4 className="font-semibold text-gray-900 text-sm">Synthetic World</h4>
-                          <p className="text-xs text-gray-700">Procedurally created city</p>
+                          Synthetic City
                         </button>
                         <button
                           onClick={() => setMode("osm")}
-                          className="w-full p-3 border border-white/40 rounded hover:bg-white/40 transition-colors text-left"
+                          className="w-full bg-white/70 hover:bg-white text-gray-900 rounded px-3 py-2 text-xs border border-white/50"
                         >
-                          <h4 className="font-semibold text-gray-900 text-sm">Real World (OSM)</h4>
-                          <p className="text-xs text-gray-700">OpenStreetMap data</p>
+                          OSM Bounding Box
                         </button>
                       </div>
                     </div>
                   </div>
                 ) : mode === "synthetic" ? (
                   <div className="space-y-3">
-                    <div className="bg-white/30 p-3 rounded border border-white/40">
-                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Synthetic World</h3>
-                      <div className="space-y-2">
-                        <div>
-                          <Label.Root className="text-xs font-medium text-gray-800">City Width (m)</Label.Root>
+                    <div className="bg-white/30 p-3 rounded border border-white/40 space-y-2">
+                      <h3 className="text-sm font-semibold text-gray-900">Synthetic City</h3>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <label className="flex flex-col gap-1">
+                          <span>Width (m)</span>
                           <input
                             type="number"
+                            className="px-2 py-1 rounded border border-white/40 bg-white/60"
                             value={cityWidth}
                             onChange={(e) => setCityWidth(+e.target.value)}
-                            className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
-                        </div>
-                        <div>
-                          <Label.Root className="text-xs font-medium text-gray-800">City Height (m)</Label.Root>
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span>Height (m)</span>
                           <input
                             type="number"
+                            className="px-2 py-1 rounded border border-white/40 bg-white/60"
                             value={cityHeight}
                             onChange={(e) => setCityHeight(+e.target.value)}
-                            className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
-                        </div>
-                        <div>
-                          <Label.Root className="text-xs font-medium text-gray-800">Seed</Label.Root>
+                        </label>
+                        <label className="flex flex-col gap-1 col-span-2">
+                          <span>Seed</span>
                           <input
                             type="number"
+                            className="px-2 py-1 rounded border border-white/40 bg-white/60"
                             value={seed}
                             onChange={(e) => setSeed(+e.target.value)}
-                            className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
-                        </div>
+                        </label>
                       </div>
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex gap-2">
                         <button
                           onClick={loadSyntheticWorld}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
                           disabled={isLoading}
-                          className={`px-3 py-1 rounded text-xs transition-colors ${isLoading ? "bg-white/40 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
                         >
-                          {isLoading ? "Generating..." : "Generate"}
+                          {isLoading ? "Loading…" : "Build World"}
                         </button>
                         <button
                           onClick={() => setMode(null)}
-                          disabled={isLoading}
-                          className={`px-3 py-1 rounded text-xs transition-colors ${isLoading ? "bg-white/40 text-gray-400 cursor-not-allowed" : "bg-gray-600 text-white hover:bg-gray-700"}`}
+                          className="bg-white/60 px-3 py-1 rounded text-xs border border-white/40"
                         >
                           Back
                         </button>
@@ -304,62 +327,76 @@ export default function Controls() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="bg-white/30 p-3 rounded border border-white/40">
-                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Real World (OSM)</h3>
-
-                      <div className="mb-2">
-                        <Label.Root className="text-xs font-medium text-gray-800 mb-1 block">Presets</Label.Root>
-                        <div className="flex flex-wrap gap-1">
-                          {Object.keys(PRESETS).map((name) => (
-                            <button
-                              key={name}
-                              onClick={() => applyPreset(name as keyof typeof PRESETS)}
-                              className="px-2 py-1 text-xs bg-white/50 text-gray-800 rounded border border-white/40 hover:bg-white/70 transition-colors"
-                            >
-                              {name}
-                            </button>
-                          ))}
-                        </div>
+                    <div className="bg-white/30 p-3 rounded border border-white/40 space-y-2">
+                      <h3 className="text-sm font-semibold text-gray-900">OSM Bounding Box</h3>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <label className="flex flex-col gap-1">
+                          <span>North</span>
+                          <input
+                            type="number"
+                            className="px-2 py-1 rounded border border-white/40 bg-white/60"
+                            value={north}
+                            onChange={(e) => setNorth(+e.target.value)}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span>South</span>
+                          <input
+                            type="number"
+                            className="px-2 py-1 rounded border border-white/40 bg-white/60"
+                            value={south}
+                            onChange={(e) => setSouth(+e.target.value)}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span>East</span>
+                          <input
+                            type="number"
+                            className="px-2 py-1 rounded border border-white/40 bg-white/60"
+                            value={east}
+                            onChange={(e) => setEast(+e.target.value)}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span>West</span>
+                          <input
+                            type="number"
+                            className="px-2 py-1 rounded border border-white/40 bg-white/60"
+                            value={west}
+                            onChange={(e) => setWest(+e.target.value)}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 col-span-2">
+                          <span>Target Buildings</span>
+                          <input
+                            type="number"
+                            className="px-2 py-1 rounded border border-white/40 bg-white/60"
+                            value={maxB}
+                            onChange={(e) => setMaxB(+e.target.value)}
+                          />
+                        </label>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label.Root className="text-xs font-medium text-gray-800">North</Label.Root>
-                          <input type="number" value={north} onChange={(e) => setNorth(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </div>
-                        <div>
-                          <Label.Root className="text-xs font-medium text-gray-800">South</Label.Root>
-                          <input type="number" value={south} onChange={(e) => setSouth(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </div>
-                        <div>
-                          <Label.Root className="text-xs font-medium text-gray-800">East</Label.Root>
-                          <input type="number" value={east} onChange={(e) => setEast(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </div>
-                        <div>
-                          <Label.Root className="text-xs font-medium text-gray-800">West</Label.Root>
-                          <input type="number" value={west} onChange={(e) => setWest(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </div>
-                      </div>
-
-                      <div className="mt-2">
-                        <Label.Root className="text-xs font-medium text-gray-800">Target Buildings</Label.Root>
-                        <input type="number" value={maxB} onChange={(e) => setMaxB(+e.target.value)} className="mt-1 w-full px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                      </div>
-
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex gap-2">
                         <button
                           onClick={loadOSMWorld}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
                           disabled={isLoading}
-                          className={`px-3 py-1 rounded text-xs transition-colors ${isLoading ? "bg-white/40 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
                         >
-                          {isLoading ? "Loading..." : "Load City"}
+                          {isLoading ? "Loading…" : "Fetch World"}
                         </button>
                         <button
                           onClick={() => setMode(null)}
-                          disabled={isLoading}
-                          className={`px-3 py-1 rounded text-xs transition-colors ${isLoading ? "bg-white/40 text-gray-400 cursor-not-allowed" : "bg-gray-600 text-white hover:bg-gray-700"}`}
+                          className="bg-white/60 px-3 py-1 rounded text-xs border border-white/40"
                         >
                           Back
+                        </button>
+                      </div>
+                      <div className="mt-2 text-xs">
+                        <button
+                          className="underline"
+                          onClick={() => applyPreset("NYC – Times Sq (tiny)")}
+                        >
+                          Use NYC Times Sq (tiny)
                         </button>
                       </div>
                     </div>
@@ -368,128 +405,136 @@ export default function Controls() {
               </div>
             )}
 
-            {/* -------- Simulation (visible only after world is generated) -------- */}
+            {/* Simulation panel */}
             {!inWorldSetup && (
               <div>
                 <h2 className="text-lg font-bold text-gray-900 mb-3">Simulation</h2>
-                <div className="space-y-3">
+
+                <div className="grid gap-3">
+                  <div className="bg-white/30 p-3 rounded border border-white/40 space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-900">Planner & Runtime</h4>
+
+                    {/* Algorithm select */}
+                    <div>
+                      <Label.Root className="text-xs font-medium text-gray-800">
+                        Algorithm
+                      </Label.Root>
+                      <Select.Root
+                        value={selected ?? ""}
+                        onValueChange={(val) => setSelected?.(val)}
+                        disabled={!algorithms?.length}
+                      >
+                        <Select.Trigger className="mt-1 w-full inline-flex items-center justify-between text-xs px-3 py-2 bg-white/60 rounded border border-white/40">
+                          <Select.Value placeholder="Select algorithm…" />
+                          <ChevronDown size={14} />
+                        </Select.Trigger>
+                        <Select.Portal>
+                          <Select.Content className="bg-white/90 rounded shadow-lg text-xs z-[9999]">
+                            <Select.Viewport>
+                              {algorithms?.map((name) => (
+                                <Select.Item
+                                  key={name}
+                                  value={name}
+                                  className="px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-blue-50"
+                                >
+                                  <Select.ItemText>{name}</Select.ItemText>
+                                  <Select.ItemIndicator>
+                                    <Check size={12} />
+                                  </Select.ItemIndicator>
+                                </Select.Item>
+                              ))}
+                            </Select.Viewport>
+                          </Select.Content>
+                        </Select.Portal>
+                      </Select.Root>
+                    </div>
+
+                    {/* Speed */}
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <Label.Root className="text-xs font-medium text-gray-800">
+                          Speed: {speed} m/s
+                        </Label.Root>
+                      </div>
+                      <Slider.Root
+                        value={[speed]}
+                        onValueChange={([v]) => setSpeed(v)}
+                        min={5}
+                        max={120}
+                        step={5}
+                        className="relative flex items-center w-full h-4"
+                      >
+                        <Slider.Track className="bg-white/40 rounded-full h-1 flex-1">
+                          <Slider.Range className="bg-blue-500 rounded-full h-full" />
+                        </Slider.Track>
+                        <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </Slider.Root>
+                    </div>
+
+                    {/* Tick rate */}
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <Label.Root className="text-xs font-medium text-gray-800">
+                          Tick Rate: {tickRate} Hz
+                        </Label.Root>
+                      </div>
+                      <Slider.Root
+                        value={[tickRate]}
+                        onValueChange={([v]) => setTickRate(v)}
+                        min={1}
+                        max={60}
+                        step={1}
+                        className="relative flex items-center w-full h-4"
+                      >
+                        <Slider.Track className="bg-white/40 rounded-full h-1 flex-1">
+                          <Slider.Range className="bg-blue-500 rounded-full h-full" />
+                        </Slider.Track>
+                        <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </Slider.Root>
+                    </div>
+                  </div>
+
+                  {/* Drone population */}
                   <div className="bg-white/30 p-3 rounded border border-white/40">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Parameters</h3>
-                    <div className="space-y-3">
-                      <div>
-                        <Label.Root className="text-xs font-medium text-gray-800 mb-1 block">Algorithm</Label.Root>
-                        <Select.Root value={selected ?? undefined} onValueChange={setSelected}>
-                          <Select.Trigger
-                            className="
-                              w-full px-3 py-2 
-                              border border-white/40 rounded-md
-                              text-xs bg-white/70 hover:bg-white/80
-                              focus:outline-none focus:ring-2 focus:ring-blue-400/30
-                              flex items-center justify-between gap-2
-                              transition-all duration-150 ease-in-out
-                              group
-                            "
-                          >
-                            <Select.Value
-                              placeholder={<span className="text-gray-500">SELECT ALGORITHM</span>}
-                              className="uppercase"
-                            >
-                              {selected && selected.toUpperCase().replace(/_/g, ' ')}
-                            </Select.Value>
-                            <Select.Icon>
-                              <ChevronDown
-                                size={14}
-                                className="text-gray-500 group-hover:text-gray-700 transition-transform duration-200 group-data-[state=open]:rotate-180"
-                              />
-                            </Select.Icon>
-                          </Select.Trigger>
-
-                          <Select.Portal>
-                            <Select.Content
-                              position="popper"
-                              sideOffset={4}
-                              className="
-                                w-[var(--radix-select-trigger-width)]
-                                min-w-[var(--radix-select-trigger-width)]
-                                bg-white/95 backdrop-blur-lg
-                                border border-white/40 rounded-lg
-                                shadow-lg shadow-black/5
-                                z-[1000] max-h-60 overflow-auto
-                                animate-in fade-in-0 zoom-in-95
-                                duration-100 ease-out
-                              "
-                            >
-                              <Select.Viewport className="p-1">
-                                {algorithms.map((algorithm) => (
-                                  <Select.Item
-                                    key={algorithm}
-                                    value={algorithm}
-                                    className="
-                                      relative flex items-center px-7 py-2
-                                      text-xs text-gray-800
-                                      rounded-md cursor-pointer
-                                      hover:bg-blue-50 hover:text-blue-600
-                                      focus:bg-blue-50 focus:text-blue-600
-                                      focus:outline-none
-                                      transition-colors duration-150
-                                      select-none
-                                    "
-                                  >
-                                    <Select.ItemText>
-                                      {algorithm.toUpperCase().replace(/_/g, ' ')}
-                                    </Select.ItemText>
-                                    <Select.ItemIndicator className="absolute left-2 text-blue-500">
-                                      <Check size={12} className="animate-in zoom-in-50 duration-100" />
-                                    </Select.ItemIndicator>
-                                  </Select.Item>
-                                ))}
-                              </Select.Viewport>
-                            </Select.Content>
-                          </Select.Portal>
-                        </Select.Root>
-
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between mb-1"><Label.Root className="text-xs font-medium text-gray-800">Speed: {speed} m/s</Label.Root></div>
-                        <Slider.Root value={[speed]} onValueChange={([v]) => setSpeed(v)} min={5} max={120} step={5} className="relative flex items-center w-full h-4">
-                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
-                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </Slider.Root>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between mb-1"><Label.Root className="text-xs font-medium text-gray-800">Tick Rate: {tickRate} Hz</Label.Root></div>
-                        <Slider.Root value={[tickRate]} onValueChange={([v]) => setTickRate(v)} min={1} max={60} step={1} className="relative flex items-center w-full h-4">
-                          <Slider.Track className="bg-white/40 rounded-full h-1 flex-1"><Slider.Range className="bg-blue-500 rounded-full h-full" /></Slider.Track>
-                          <Slider.Thumb className="block w-4 h-4 bg-blue-500 rounded-full hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                        </Slider.Root>
-                      </div>
-                    </div>
-
-                    <Separator.Root className="h-px bg-white/30 my-3" />
-
                     <h4 className="text-sm font-semibold text-gray-900 mb-2">Drone Population</h4>
-                    <div className="mb-3">
-                      <p className="text-xs text-gray-800 mb-2">Current: {drones.length} drones</p>
-                      <div className="flex gap-2 mb-3">
-                        <input
-                          type="number"
-                          min="1"
-                          max="1000"
-                          value={droneCount}
-                          className="w-20 px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                          onChange={(e) => setDroneCount(Math.min(1000, Math.max(1, +e.target.value)))}
-                        />
-                      </div>
+                    <p className="text-xs text-gray-800 mb-2">Current: {drones.length} drones</p>
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={droneCount}
+                        className="w-20 px-2 py-1 border border-white/40 rounded text-xs bg-white/60 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        onChange={(e) =>
+                          setDroneCount(Math.min(1000, Math.max(1, +e.target.value)))
+                        }
+                      />
                     </div>
+                  </div>
 
-                    <Separator.Root className="h-px bg-white/30 my-3" />
+                  <Separator.Root className="h-px bg-white/30 my-1" />
 
+                  {/* Controls */}
+                  <div className="bg-white/30 p-3 rounded border border-white/40">
                     <h4 className="text-sm font-semibold text-gray-900 mb-2">Controls</h4>
                     <div className="flex gap-4">
                       <button
                         onClick={() => {
+                          // Send everything in a deterministic order to avoid race conditions:
+                          // 1) algorithm, 2) params, 3) tick rate, 4) drones, 5) start
+                          if (selected) {
+                            send({ type: "set_algorithm", algorithm: selected });
+                          }
+                          send({
+                            type: "set_params",
+                            params: {
+                              grid_cell_m: 20,
+                              clearance_m: 6,
+                              speed,
+                            },
+                          });
+                          send({ type: "tick_rate", tick_rate_hz: tickRate });
+
                           seedDrones(droneCount);
                           send({ type: "start" });
                         }}
@@ -497,12 +542,17 @@ export default function Controls() {
                       >
                         Start
                       </button>
+
                       <button
                         onClick={() => {
+                          // Full reset (UI + backend)
                           send({ type: "reset" });
                           send({ type: "set_drones", drones: [] });
                           useSimStore.setState({ drones: [], tick: 0 });
-                          const emptyWorld: World = { obstacles: [], size: [1000, 1000, 1000] as [number, number, number] };
+                          const emptyWorld: World = {
+                            obstacles: [],
+                            size: [1000, 1000, 1000] as [number, number, number],
+                          };
                           send({ type: "set_world", world: emptyWorld });
                           useSimStore.setState({ world: emptyWorld });
                           setPhase("world");
@@ -525,15 +575,17 @@ export default function Controls() {
 
           {/* Footer */}
           <div className="p-3 border-t border-white/30">
-            <div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] text-gray-800">UAV Simulation</p>
-                  <p className="text-[11px] text-gray-700">v1.0</p>
-                </div>
-                <div className={`px-2 py-1 rounded-md text-[11px] ${connected ? 'bg-green-500/20 text-green-700' : 'bg-red-500/20 text-red-700'}`}>
-                  {connected ? 'Connected' : 'Disconnected'}
-                </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] text-gray-800">UAV Simulation</p>
+                <p className="text-[11px] text-gray-700">v1.0</p>
+              </div>
+              <div
+                className={`px-2 py-1 rounded-md text-[11px] ${
+                  connected ? "bg-green-500/20 text-green-700" : "bg-red-500/20 text-red-700"
+                }`}
+              >
+                {connected ? "Connected" : "Disconnected"}
               </div>
             </div>
           </div>
