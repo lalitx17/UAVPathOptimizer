@@ -2,7 +2,7 @@
 
 ## Overview
 
-A comprehensive simulation system for testing drone path optimization algorithms in 3D space. Features real-time visualization, multiple optimization algorithms, and WebSocket-based communication.
+A comprehensive simulation system for testing drone path optimization algorithms in 3D space. Features real-time visualization, algorithm pluggability, and WebSocket-based communication.
 
 ## Project Architecture
 
