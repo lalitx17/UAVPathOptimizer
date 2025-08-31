@@ -4,23 +4,64 @@
 
 A comprehensive simulation system for testing drone path optimization algorithms in 3D space. Features real-time visualization, multiple optimization algorithms, and WebSocket-based communication.
 
-## Simulation Architecture
+## Project Architecture
 
-### Backend (Python FastAPI + Uvicorn)
+### Backend Structure (Python FastAPI + Uvicorn)
 
-- **FastAPI**: High-performance web framework for building APIs
-- **Uvicorn**: ASGI server for running the FastAPI application
-- **WebSocket**: Real-time communication for simulation ticks
-- **Path Optimization Algorithms**: Multiple algorithms for drone path planning
+The backend follows a **modular architecture** with clear separation of concerns:
 
-### Frontend (React + Vite + Deck.gl)
+```
+backend/
+├── app/
+│   ├── main.py              # FastAPI application entry point
+│   ├── models.py            # Pydantic data models
+│   └── sim/
+│       ├── engine.py        # Simulation engine orchestrator
+│       ├── world.py         # World physics and drone movement
+│       ├── osm_world.py     # OSM data integration
+│       └── algorithms/
+│           ├── base.py      # Abstract algorithm interface
+│           ├── registry.py  # Algorithm factory pattern
+│           ├── straight_line.py
+│           └── bandit_mha_star.py
+```
 
-- **React 18**: Modern UI framework with hooks
-- **Vite**: Fast build tool and development server
-- **Deck.gl**: 3D visualization library for drone trajectories
-- **Zustand**: Lightweight state management
-- **WebSocket**: Real-time data streaming from backend
-- **TypeScript**: Type-safe development
+**Design Patterns Used:**
+
+1. **Factory Pattern** (`registry.py`): Centralized algorithm registration and instantiation
+2. **Strategy Pattern** (`algorithms/`): Pluggable path optimization algorithms
+3. **Context Pattern** (`AlgoContext`): Encapsulates algorithm execution context
+4. **Dependency Injection**: FastAPI's dependency injection for WebSocket handling
+
+**Key Components:**
+- **SimulationEngine**: Orchestrates simulation loop and algorithm execution
+- **Algorithm Registry**: Manages available path optimization algorithms
+- **WebSocket Handler**: Real-time bidirectional communication
+- **World Models**: OSM integration and synthetic city generation
+
+### Frontend Structure (React + TypeScript + Vite)
+
+The frontend follows a **component-based architecture** with modern React patterns:
+
+```
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── Controls.tsx     # Simulation control panel
+│   │   └── DeckScene.tsx    # 3D visualization component
+│   ├── api/
+│   │   └── ws.ts           # WebSocket communication layer
+│   ├── state/
+│   │   └── simStore.ts     # Zustand state management
+│   ├── types.ts            # TypeScript type definitions
+│   └── App.tsx             # Main application component
+```
+
+**Key Components:**
+- **SimStore**: Global state management with Zustand
+- **WebSocket API**: Real-time communication layer
+- **Deck.gl Scene**: 3D visualization with WebGL
+- **Control Panel**: User interface for simulation parameters
 
 ## How to Use
 
