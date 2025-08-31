@@ -1,13 +1,60 @@
-# UAV Path Optimization Algorithm
+## Inspiration
+Urban mobility is one of the biggest challenges of our time. Cities like New York, Los Angeles, and Chicago lose billions of dollars annually due to traffic congestion. According to the INRIX Global Traffic Scorecard, drivers in New York City lose on average **117 hours per year** stuck in traffic, costing more than **$1,700 per driver annually** in lost productivity. UAVs (unmanned aerial vehicles) can unlock the airspace above cities and create entirely new pathways for efficient, safe, and time-saving transportation and delivery. The UAV Path Optimizer is built to solve this exact problem, turning gridlocked hours into minutes by enabling smarter navigation through complex urban landscapes.
 
-# Optimization Objectives
+## Intuition
+This algorithm builds directly on the classical A* pathfinding algorithm. A* relies on a single heuristic to guide the search, but for UAVs flying in dense cities a single heuristic is not enough. UAVs must balance multiple objectives such as keeping a safe distance from buildings, aligning with the overall goal direction, and navigating efficiently across large-scale maps. To address this, the algorithm runs **multiple heuristics in parallel**: one for distance, one for clearance from obstacles, one for global progress using landmarks, and one for bearing alignment.  
 
-- Minimize flight time
-- Avoid obstacles
-- Ensure safe distance from no-fly zones
+Simply running multiple heuristics is not sufficient. Different heuristics are useful in different regions of the city, so we introduce a **scheduling algorithm based on multi-armed bandits**. This scheduler learns in real time which heuristic is performing best for the current environment and chooses accordingly. The result is a planner that adapts its decision-making to the unique challenges of each area while still maintaining the safety guarantees of A*.
 
-TODO
+## Explanation
+We implemented **Bandit Multi-Heuristic A*** (BMHA*), an algorithm that leverages multiple search heuristics simultaneously:
+- **Anchor Queue (Admissible):** Ensures safety and guarantees optimal or near-optimal solutions.
+- **Clearance-Aware Queue:** Prefers paths with greater distance from obstacles for smoother and safer flights.
+- **Landmark Queue:** Uses pre-computed distances to corner landmarks to estimate progress efficiently.
+- **Bearing-Biased Queue:** Prefers directions aligned with the goal to reduce zig-zagging.
 
-- Wind Robustness
-- Smooth motion
-- Maximize energy efficiency
+A **contextual bandit algorithm (UCB1)** decides which queue to expand at every step, learning which heuristic performs best in the current environment. This balances exploration and exploitation in real time.
+
+The grid precomputation phase creates a **clearance map** from obstacles, allowing UAVs to dynamically adjust speed based on local clearance. Closer to buildings → fly slower; in open air → accelerate.
+
+
+## Complexity Analysis
+Like standard A*, BMHA* has complexity tied to the size of the search grid. If the grid is **W × H** with branching factor **b** and path length **d**, the worst-case runtime of A* is **O(b^d)** but in practice is closer to **O(N log N)** where **N = W × H** due to the use of priority queues.  
+
+BMHA* introduces multiple open lists (four queues in our case). Each insertion and extraction from a queue is **O(log N)**, and with k queues this scales to **O(k log N)** per expansion. Since k is constant and small, the asymptotic complexity remains **O(N log N)**. The overhead of computing multiple heuristics is linear in k per node but still bounded.  
+
+The **bandit scheduling** adds minimal overhead since UCB1 selection requires only constant-time arithmetic over the k heuristics.  
+
+**Space complexity** is also **O(N)** for storing g-costs, clearance values, and parent links. The clearance precomputation step runs in **O(N)** time with two sweeps over the grid.  
+
+In practice, BMHA* is slightly slower than vanilla A* on open maps but performs significantly better in dense urban maps because it avoids exploring misleading regions by leveraging the most effective heuristic dynamically.
+
+## Challenges we ran into
+- **Scalability:** Running full grid-based clearance computations on large cities (>300k cells) caused performance bottlenecks. We had to introduce coarse grid fallbacks.
+- **Obstacle inflation:** Properly inflating obstacles to account for UAV wingspan and safety margins without overly restricting the map required careful tuning.
+- **Balancing heuristics:** Some heuristics dominated early, leading to suboptimal exploration. UCB scheduling fixed this but required tweaking parameters like exploration constant `c`.
+- **Integration with simulation:** Getting the planner to smoothly integrate with the simulation backend and avoiding cases where drones clipped through buildings required debugging.
+
+## Accomplishments that we're proud of
+- Implemented a **working BMHA* planner** that dynamically chooses heuristics using bandit learning.
+- Achieved **collision-free flight paths** in dense urban maps with thousands of obstacles.
+- Designed an adaptive speed model where UAVs naturally **slow near buildings and accelerate in open areas**.
+- Demonstrated scalability with fallback methods for extremely large maps.
+- Created a foundation for **real-time UAV path replanning** in dynamic environments.
+
+## What we learned
+- Classical AI planning methods like A* can be significantly enhanced with **modern learning-based decision strategies** (bandits).
+- Clearance-aware navigation is **just as important as shortest path** since safety and smoothness matter in UAV flight.
+- Integrating multiple heuristics requires not only careful weighting but also a mechanism to learn their utility in context.
+- The trade-off between **optimality and runtime performance** is key for real-time applications.
+
+## What's next for UAV Path Optimizer
+- **Dynamic Obstacles:** Extend the planner to handle moving obstacles such as other UAVs, helicopters, or dynamic no-fly zones.
+- **Energy-Aware Planning:** Incorporate UAV battery models so that paths are optimized for **both time and energy efficiency**.
+- **3D Urban Airspace:** Extend the grid to true 3D navigation, accounting for altitude layers, wind patterns, and regulations.
+- **Multi-UAV Swarm Optimization:** Enable cooperative path planning for fleets of UAVs to coordinate routes and avoid mid-air congestion.
+
+
+## References
+[Multi-Heuristic A*](https://www.cs.cmu.edu/~maxim/files/mha_ijrr15.pdf)
+[UCB1](https://homes.di.unimi.it/~cesabian/Pubblicazioni/ml-02.pdf)
