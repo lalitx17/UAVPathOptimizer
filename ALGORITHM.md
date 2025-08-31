@@ -29,6 +29,21 @@ The **bandit scheduling** adds minimal overhead since UCB1 selection requires on
 
 In practice, BMHA* is slightly slower than vanilla A* on open maps but performs significantly better in dense urban maps because it avoids exploring misleading regions by leveraging the most effective heuristic dynamically.
 
+## Simulation Engine
+The simulation engine provides a **real-time 3D visualization** of the UAV path planning process, enabling users to observe and validate the algorithm's performance in realistic urban environments.
+
+### Core Components
+- **World Representation:** The simulation uses OpenStreetMap (OSM) data to create accurate 3D city models with buildings, roads, and terrain features. This provides a realistic environment for testing UAV navigation algorithms.(Real city simulation is slower than synthetic city simulation)
+
+### Interactive Features
+- **Multiple Algorithm Comparison:** The simulation supports switching between different pathfinding algorithms (BMHA*, straight-line) for side-by-side performance comparison.
+- **3D Camera Controls:** Users can navigate the 3D environment, zoom into specific areas, and follow the UAV along its planned path for detailed analysis.
+
+### Performance Monitoring
+- **Visual Debugging:** Color-coded visualization shows different heuristic queues, explored vs. unexplored areas, and clearance levels, making it easier to debug and optimize the algorithm.
+
+The simulation engine serves as both a **validation tool** for algorithm correctness and a **research platform** for developing new UAV navigation strategies in complex urban environments.
+
 ## Challenges we ran into
 - **Scalability:** Running full grid-based clearance computations on large cities (>300k cells) caused performance bottlenecks. We had to introduce coarse grid fallbacks.
 - **Integration with simulation:** Getting the planner to smoothly integrate with the simulation backend required debugging.
@@ -38,9 +53,8 @@ In practice, BMHA* is slightly slower than vanilla A* on open maps but performs 
 - Achieved **collision-free flight paths** in dense urban maps with thousands of obstacles.
 - Designed an adaptive speed model where UAVs naturally **slow near buildings and accelerate in open areas**.
 - Demonstrated scalability with fallback methods for extremely large maps.
-- Created a foundation for **real-time UAV path replanning** in dynamic environments.
 
-## What I learned
+## What we learned
 - Classical AI planning methods like A* can be significantly enhanced with **modern learning-based decision strategies** (bandits).
 - Clearance-aware navigation is **just as important as shortest path** since safety and smoothness matter in UAV flight.
 - Integrating multiple heuristics requires not only careful weighting but also a mechanism to learn their utility in context.
@@ -50,7 +64,6 @@ In practice, BMHA* is slightly slower than vanilla A* on open maps but performs 
 - **Dynamic Obstacles:** Extend the planner to handle moving obstacles such as other UAVs, helicopters, or dynamic no-fly zones.
 - **Energy-Aware Planning:** Incorporate UAV battery models so that paths are optimized for **both time and energy efficiency**.
 - **3D Urban Airspace:** Extend the grid to true 3D navigation, accounting for altitude layers, wind patterns, and regulations.
-
 
 ## References
 [Multi-Heuristic A*](https://www.cs.cmu.edu/~maxim/files/mha_ijrr15.pdf)
