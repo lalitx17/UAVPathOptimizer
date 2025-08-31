@@ -8,6 +8,4 @@ class StraightLine(Algorithm):
         speed = float(ctx.params.get("speed", 30.0))
         for d in ctx.drones:
             if d.target:
-                # set a simple 1-segment path
-                d.path = [d.target]  # engine will step toward the next waypoint
-            # attach per-drone param if desired via d.vel.z etc.
+                d.path = [d.target] 

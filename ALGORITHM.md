@@ -31,18 +31,16 @@ In practice, BMHA* is slightly slower than vanilla A* on open maps but performs 
 
 ## Challenges we ran into
 - **Scalability:** Running full grid-based clearance computations on large cities (>300k cells) caused performance bottlenecks. We had to introduce coarse grid fallbacks.
-- **Obstacle inflation:** Properly inflating obstacles to account for UAV wingspan and safety margins without overly restricting the map required careful tuning.
-- **Balancing heuristics:** Some heuristics dominated early, leading to suboptimal exploration. UCB scheduling fixed this but required tweaking parameters like exploration constant `c`.
-- **Integration with simulation:** Getting the planner to smoothly integrate with the simulation backend and avoiding cases where drones clipped through buildings required debugging.
+- **Integration with simulation:** Getting the planner to smoothly integrate with the simulation backend required debugging.
 
-## Accomplishments that we're proud of
+## Accomplishments that I'm proud of
 - Implemented a **working BMHA* planner** that dynamically chooses heuristics using bandit learning.
 - Achieved **collision-free flight paths** in dense urban maps with thousands of obstacles.
 - Designed an adaptive speed model where UAVs naturally **slow near buildings and accelerate in open areas**.
 - Demonstrated scalability with fallback methods for extremely large maps.
 - Created a foundation for **real-time UAV path replanning** in dynamic environments.
 
-## What we learned
+## What I learned
 - Classical AI planning methods like A* can be significantly enhanced with **modern learning-based decision strategies** (bandits).
 - Clearance-aware navigation is **just as important as shortest path** since safety and smoothness matter in UAV flight.
 - Integrating multiple heuristics requires not only careful weighting but also a mechanism to learn their utility in context.
@@ -52,9 +50,9 @@ In practice, BMHA* is slightly slower than vanilla A* on open maps but performs 
 - **Dynamic Obstacles:** Extend the planner to handle moving obstacles such as other UAVs, helicopters, or dynamic no-fly zones.
 - **Energy-Aware Planning:** Incorporate UAV battery models so that paths are optimized for **both time and energy efficiency**.
 - **3D Urban Airspace:** Extend the grid to true 3D navigation, accounting for altitude layers, wind patterns, and regulations.
-- **Multi-UAV Swarm Optimization:** Enable cooperative path planning for fleets of UAVs to coordinate routes and avoid mid-air congestion.
 
 
 ## References
 [Multi-Heuristic A*](https://www.cs.cmu.edu/~maxim/files/mha_ijrr15.pdf)
+
 [UCB1](https://homes.di.unimi.it/~cesabian/Pubblicazioni/ml-02.pdf)

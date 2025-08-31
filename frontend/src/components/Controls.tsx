@@ -29,7 +29,6 @@ export default function Controls() {
   const drones = useSimStore((s) => s.drones);
   const connected = useSimStore((s) => s.connected);
 
-  // Prefer Bandit MHA* when available
   useEffect(() => {
     if (!algorithms?.length) return;
     if (selected && algorithms.includes(selected)) return;
@@ -39,38 +38,32 @@ export default function Controls() {
     setSelected?.(preferred);
   }, [algorithms, selected, setSelected]);
 
-  // --------- Sidebar & phases ---------
+
   const [open, setOpen] = useState(true);
   const toggle = () => setOpen((o) => !o);
   const [phase, setPhase] = useState<"world" | "simulation">("world");
 
-  // --------- World setup UI state ---------
   const [mode, setMode] = useState<WorldMode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // OSM bbox inputs
   const [north, setNorth] = useState(PRESETS["NYC – Times Sq (tiny)"].north);
   const [south, setSouth] = useState(PRESETS["NYC – Times Sq (tiny)"].south);
   const [east, setEast] = useState(PRESETS["NYC – Times Sq (tiny)"].east);
   const [west, setWest] = useState(PRESETS["NYC – Times Sq (tiny)"].west);
   const [maxB, setMaxB] = useState(250);
 
-  // Synthetic city inputs
   const [cityWidth, setCityWidth] = useState(3000);
   const [cityHeight, setCityHeight] = useState(3000);
   const [seed, setSeed] = useState(42);
 
-  // Sim parameters
   const [speed, setSpeed] = useState(30);
   const [tickRate, setTickRate] = useState(20);
   const [droneCount, setDroneCount] = useState(200);
 
-  // ------ Keep backend params in sync (safe defaults) ------
-  // Base grid & motion defaults on mount
+
   useEffect(() => {
     send({ type: "set_params", params: { grid_cell_m: 20, clearance_m: 6, speed: 30 } });
   }, []);
-  // Live updates for controls
   useEffect(() => {
     send({ type: "set_params", params: { speed } });
   }, [speed]);
@@ -86,7 +79,6 @@ export default function Controls() {
     setWest(b.west);
   };
 
-  // --------- Actions: world loaders ---------
   const loadSyntheticWorld = async () => {
     if (isLoading) return;
     setIsLoading(true);
@@ -205,7 +197,6 @@ export default function Controls() {
 
   const inWorldSetup = phase === "world";
 
-  // --------- Render ---------
   return (
     <>
       {/* Toggle button */}
