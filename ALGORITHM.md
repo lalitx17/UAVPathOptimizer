@@ -4,10 +4,10 @@ Urban mobility is one of the biggest challenges of our time. Cities like New Yor
 ## Intuition
 This algorithm builds directly on the classical A* pathfinding algorithm. A* relies on a single heuristic to guide the search, but for UAVs flying in dense cities a single heuristic is not enough. UAVs must balance multiple objectives such as keeping a safe distance from buildings, aligning with the overall goal direction, and navigating efficiently across large-scale maps. To address this, the algorithm runs **multiple heuristics in parallel**: one for distance, one for clearance from obstacles, one for global progress using landmarks, and one for bearing alignment.  
 
-Simply running multiple heuristics is not sufficient. Different heuristics are useful in different regions of the city, so we introduce a **scheduling algorithm based on multi-armed bandits**. This scheduler learns in real time which heuristic is performing best for the current environment and chooses accordingly. The result is a planner that adapts its decision-making to the unique challenges of each area while still maintaining the safety guarantees of A*.
+Simply running multiple heuristics is not sufficient. Different heuristics are useful in different regions of the city, so I introduce a **scheduling algorithm based on multi-armed bandits**. This scheduler learns in real time which heuristic is performing best for the current environment and chooses accordingly. The result is a planner that adapts its decision-making to the unique challenges of each area while still maintaining the safety guarantees of A*.
 
 ## Explanation
-We implemented **Bandit Multi-Heuristic A*** (BMHA*), an algorithm that leverages multiple search heuristics simultaneously:
+I implemented **Bandit Multi-Heuristic A*** (BMHA*), an algorithm that leverages multiple search heuristics simultaneously:
 - **Anchor Queue (Admissible):** Ensures safety and guarantees optimal or near-optimal solutions.
 - **Clearance-Aware Queue:** Prefers paths with greater distance from obstacles for smoother and safer flights.
 - **Landmark Queue:** Uses pre-computed distances to corner landmarks to estimate progress efficiently.
@@ -44,8 +44,8 @@ The simulation engine provides a **real-time 3D visualization** of the UAV path 
 
 The simulation engine serves as both a **validation tool** for algorithm correctness and a **research platform** for developing new UAV navigation strategies in complex urban environments.
 
-## Challenges we ran into
-- **Scalability:** Running full grid-based clearance computations on large cities (>300k cells) caused performance bottlenecks. We had to introduce coarse grid fallbacks.
+## Challenges I ran into
+- **Scalability:** Running full grid-based clearance computations on large cities (>300k cells) caused performance bottlenecks. I had to introduce coarse grid fallbacks.
 - **Integration with simulation:** Getting the planner to smoothly integrate with the simulation backend required debugging.
 
 ## Accomplishments that I'm proud of
@@ -54,7 +54,7 @@ The simulation engine serves as both a **validation tool** for algorithm correct
 - Designed an adaptive speed model where UAVs naturally **slow near buildings and accelerate in open areas**.
 - Demonstrated scalability with fallback methods for extremely large maps.
 
-## What we learned
+## What I learned
 - Classical AI planning methods like A* can be significantly enhanced with **modern learning-based decision strategies** (bandits).
 - Clearance-aware navigation is **just as important as shortest path** since safety and smoothness matter in UAV flight.
 - Integrating multiple heuristics requires not only careful weighting but also a mechanism to learn their utility in context.
